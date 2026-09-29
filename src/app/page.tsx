@@ -77,14 +77,14 @@ export default async function Dashboard() {
       <Card className="mt-4">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-semibold">Últimos movimientos</h2>
-          <Link href="/movimientos" className="text-sm text-rose-900 hover:underline">
+          <Link href="/movimientos" className="text-sm text-rose-deep hover:underline">
             Ver todos →
           </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-stone-200">
+              <tr className="border-b border-line">
                 <th className={th}>Fecha</th>
                 <th className={th}>Tipo</th>
                 <th className={th}>Producto</th>
@@ -95,12 +95,12 @@ export default async function Dashboard() {
             </thead>
             <tbody>
               {movements.map((m) => (
-                <tr key={m.id} className="border-b border-stone-100">
+                <tr key={m.id} className="border-b border-blush-100">
                   <td className={td}>{fmtDateTime(m.occurred_at)}</td>
                   <td className={td}>{MOVEMENT_LABELS[m.type] ?? m.type}</td>
                   <td className={td}>
                     {m.product.name}
-                    {m.lot ? <span className="text-stone-400"> · {m.lot.code}</span> : null}
+                    {m.lot ? <span className="text-soft"> · {m.lot.code}</span> : null}
                   </td>
                   <td className={`${td} font-medium`}>{fmtQty(m.quantity)}</td>
                   <td className={td}>

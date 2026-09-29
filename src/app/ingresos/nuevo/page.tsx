@@ -70,7 +70,7 @@ export default async function NuevoIngreso({
             <div>
               <label className={label}>Costo total ($)</label>
               <input type="number" name="costo_total" min="0" step="0.01" className={input} />
-              <p className="mt-1 text-xs text-stone-500">Si lo cargás, el unitario se calcula solo.</p>
+              <p className="mt-1 text-xs text-soft">Si lo cargás, el unitario se calcula solo.</p>
             </div>
             <div>
               <label className={label}>Costo unitario ($)</label>

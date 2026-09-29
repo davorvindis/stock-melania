@@ -1,26 +1,22 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* Marca Melania Professional — derivada de melaniapro.com:
+   blush #EDB6B1 (logo), tinta #2E2E2E, Bebas Neue + Montserrat */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-ink: #2e2e2e;
+  --color-soft: #6f6260;
+  --color-blush: #edb6b1;
+  --color-blush-100: #f9e8e6;
+  --color-blush-50: #fdf6f5;
+  --color-rose-deep: #a85751;
+  --color-rose-deeper: #8c443f;
+  --color-line: #eddbd8;
+  --font-display: var(--font-bebas);
+  --font-sans: var(--font-montserrat);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-blush-50);
+  color: var(--color-ink);
+  font-family: var(--font-montserrat), "Helvetica Neue", Arial, sans-serif;
 }

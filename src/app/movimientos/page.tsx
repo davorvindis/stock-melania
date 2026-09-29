@@ -19,13 +19,13 @@ export default async function Movimientos({
       <PageTitle>Movimientos</PageTitle>
       <Flash ok={ok} error={error} />
       <Card>
-        <p className="mb-3 text-sm text-stone-500">
+        <p className="mb-3 text-sm text-soft">
           El historial es permanente: los errores se corrigen con una reversión, nunca borrando.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-stone-200">
+              <tr className="border-b border-line">
                 <th className={th}>Fecha</th>
                 <th className={th}>Tipo</th>
                 <th className={th}>Producto</th>
@@ -41,7 +41,7 @@ export default async function Movimientos({
               {movements.map((m) => {
                 const yaRevertido = revertidos.has(m.id);
                 return (
-                  <tr key={m.id} className={`border-b border-stone-100 ${yaRevertido ? "opacity-50" : ""}`}>
+                  <tr key={m.id} className={`border-b border-blush-100 ${yaRevertido ? "opacity-50" : ""}`}>
                     <td className={`${td} whitespace-nowrap`}>{fmtDateTime(m.occurred_at)}</td>
                     <td className={td}>
                       <span
@@ -52,7 +52,7 @@ export default async function Movimientos({
                               ? "bg-stone-200 text-stone-700"
                               : m.type.includes("QUARANTINE")
                                 ? "bg-amber-100 text-amber-800"
-                                : "bg-rose-50 text-rose-900"
+                                : "bg-blush-100 text-rose-deeper"
                         }`}
                       >
                         {MOVEMENT_LABELS[m.type] ?? m.type}
@@ -69,7 +69,7 @@ export default async function Movimientos({
                     <td className={td}>
                       {m.type !== "REVERSAL" && !yaRevertido && (
                         <details>
-                          <summary className="cursor-pointer text-xs text-rose-900 hover:underline">
+                          <summary className="cursor-pointer text-xs text-rose-deep hover:underline">
                             Revertir
                           </summary>
                           <form action={revertirMovimiento} className="mt-2 space-y-2">
@@ -79,25 +79,25 @@ export default async function Movimientos({
                               name="actor"
                               placeholder="Tu nombre"
                               required
-                              className="w-36 rounded border border-stone-300 px-2 py-1 text-xs"
+                              className="w-36 rounded border border-line px-2 py-1 text-xs"
                             />
                             <input
                               type="text"
                               name="motivo"
                               placeholder="Motivo"
                               required
-                              className="w-36 rounded border border-stone-300 px-2 py-1 text-xs"
+                              className="w-36 rounded border border-line px-2 py-1 text-xs"
                             />
                             <button
                               type="submit"
-                              className="rounded bg-rose-900 px-3 py-1 text-xs font-medium text-white"
+                              className="rounded bg-rose-deep px-3 py-1 text-xs font-medium text-white"
                             >
                               Confirmar reversión
                             </button>
                           </form>
                         </details>
                       )}
-                      {yaRevertido && <span className="text-xs text-stone-400">Revertido</span>}
+                      {yaRevertido && <span className="text-xs text-soft">Revertido</span>}
                     </td>
                   </tr>
                 );

@@ -19,3 +19,10 @@
 - Scaffold Next.js (App Router) + TypeScript + Tailwind + ESLint.
 - Documentación base (`docs/`), `.env.example`, `.gitignore`.
 - Repo GitHub (davorvindis/stock-melania) + deploy inicial en Vercel.
+
+## 2026-09-29 — Branding Melania Professional
+
+- Logo real de melaniapro.com (recortado) en header + ícono "M".
+- Paleta de marca: blush #EDB6B1, tinta #2E2E2E, rosa profundo #A85751 para acciones.
+- Tipografías del sitio oficial: Bebas Neue (títulos/números) + Montserrat (cuerpo).
+- Nav con estado activo (client component).

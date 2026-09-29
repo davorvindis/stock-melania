@@ -32,7 +32,7 @@ export default async function NuevoMovimiento({
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-stone-500">
+              <p className="mt-1 text-xs text-soft">
                 Transferencia, cuarentena y envío a proveedor necesitan destino.
               </p>
             </div>

@@ -68,7 +68,7 @@ export default async function Productos({
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-stone-200">
+              <tr className="border-b border-line">
                 <th className={th}>SKU</th>
                 <th className={th}>Nombre</th>
                 <th className={th}>Tipo</th>
@@ -79,7 +79,7 @@ export default async function Productos({
             </thead>
             <tbody>
               {products.map((p) => (
-                <tr key={p.id} className="border-b border-stone-100">
+                <tr key={p.id} className="border-b border-blush-100">
                   <td className={`${td} font-mono text-xs`}>{p.sku}</td>
                   <td className={td}>{p.name}</td>
                   <td className={td}>{TIPOS.find(([v]) => v === p.type)?.[1] ?? p.type}</td>

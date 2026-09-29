@@ -14,7 +14,7 @@ export default async function StockPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-stone-200">
+              <tr className="border-b border-line">
                 <th className={th}>SKU</th>
                 <th className={th}>Producto</th>
                 <th className={th}>Lote</th>
@@ -27,7 +27,7 @@ export default async function StockPage() {
             </thead>
             <tbody>
               {balances.map((b) => (
-                <tr key={b.id} className="border-b border-stone-100">
+                <tr key={b.id} className="border-b border-blush-100">
                   <td className={`${td} font-mono text-xs`}>{b.product.sku}</td>
                   <td className={td}>{b.product.name}</td>
                   <td className={td}>{b.lot?.code ?? "—"}</td>
@@ -54,7 +54,7 @@ export default async function StockPage() {
                     )}
                   </td>
                   <td className={`${td} font-semibold`}>
-                    {fmtQty(b.quantity)} <span className="text-xs text-stone-400">{b.product.unit}</span>
+                    {fmtQty(b.quantity)} <span className="text-xs text-soft">{b.product.unit}</span>
                   </td>
                   <td className={td}>{isAvailable(b) ? "Sí" : "No"}</td>
                 </tr>

@@ -43,7 +43,7 @@ export default async function Proveedores({
       <Card>
         <table className="w-full">
           <thead>
-            <tr className="border-b border-stone-200">
+            <tr className="border-b border-line">
               <th className={th}>Nombre</th>
               <th className={th}>CUIT</th>
               <th className={th}>Contacto</th>
@@ -52,7 +52,7 @@ export default async function Proveedores({
           </thead>
           <tbody>
             {suppliers.map((s) => (
-              <tr key={s.id} className="border-b border-stone-100">
+              <tr key={s.id} className="border-b border-blush-100">
                 <td className={td}>{s.name}</td>
                 <td className={td}>{s.cuit ?? "—"}</td>
                 <td className={td}>{s.contact ?? "—"}</td>
