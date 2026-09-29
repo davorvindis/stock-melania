@@ -367,6 +367,26 @@ export async function importarProductos(formData: FormData) {
   if (filas.length === 0) backWithError(back, "El archivo no tiene filas de productos");
 
   const cli = db();
+
+  // ubicaciones válidas (para filas con stock inicial)
+  const { data: locs } = await cli.from("locations").select("id, name").eq("active", true);
+  const locPorNombre = new Map((locs ?? []).map((l) => [l.name.toLowerCase(), l.id]));
+  const ubicacionesMalas = [
+    ...new Set(
+      filas
+        .filter((f) => f.ubicacion && !locPorNombre.has(f.ubicacion.toLowerCase()))
+        .map((f) => f.ubicacion as string)
+    ),
+  ];
+  if (ubicacionesMalas.length > 0) {
+    backWithError(
+      back,
+      `Nada se importó. Ubicaciones inexistentes: ${ubicacionesMalas.join(", ")}. Válidas: ${(locs ?? [])
+        .map((l) => l.name)
+        .join(", ")}`
+    );
+  }
+
   const { data: existentes } = await cli.from("products").select("sku");
   const ya = new Set((existentes ?? []).map((p) => p.sku.toLowerCase()));
   const nuevas = filas.filter((f) => !ya.has(f.sku.toLowerCase()));
@@ -382,18 +402,55 @@ export async function importarProductos(formData: FormData) {
         unit: f.unidad,
         type: f.tipo,
         min_stock: f.minimo,
-        tracks_lot: f.lote,
-        tracks_expiry: f.venc,
+        tracks_lot: true,
+        tracks_expiry: true,
       }))
     );
     if (error) backWithError(back, error.message);
   }
+
+  // stock inicial: un solo ingreso trazable con todas las líneas que traen cantidad
+  const conStock = nuevas.filter((f) => f.cantidad !== null && f.ubicacion);
+  let lineasStock = 0;
+  if (conStock.length > 0) {
+    const { data: creados } = await cli
+      .from("products")
+      .select("id, sku")
+      .in("sku", conStock.map((f) => f.sku));
+    const idPorSku = new Map((creados ?? []).map((p) => [p.sku.toLowerCase(), p.id]));
+    const { randomUUID } = await import("crypto");
+    const { error } = await cli.rpc("create_stock_entry", {
+      p_entry_date: new Date().toISOString().slice(0, 10),
+      p_supplier: null,
+      p_remito: null,
+      p_invoice: null,
+      p_notes: "Stock inicial importado desde Excel",
+      p_actor: user.alias,
+      p_idem: `import:${randomUUID()}`,
+      p_lines: conStock.map((f) => ({
+        product_id: idPorSku.get(f.sku.toLowerCase()),
+        lot_code: f.lote,
+        expires_on: f.vencimiento,
+        quantity: f.cantidad,
+        unit_cost: f.costo,
+        total_cost: null,
+        location_id: locPorNombre.get(f.ubicacion!.toLowerCase()),
+      })),
+    });
+    if (error) {
+      backWithError(back, `Los productos se crearon pero falló la carga de stock: ${error.message}`);
+    }
+    lineasStock = conStock.length;
+  }
+
   await cli.from("audit_logs").insert({
     actor: user.alias, action: "product:import", entity: "products",
-    detail: { creados: nuevas.length, salteados },
+    detail: { creados: nuevas.length, salteados, con_stock: lineasStock },
   });
   okRedirect(
     "/productos",
-    `Importación lista: ${nuevas.length} producto(s) creado(s)${salteados > 0 ? `, ${salteados} salteado(s) por SKU existente` : ""}.`
+    `Importación lista: ${nuevas.length} producto(s) creado(s)${
+      lineasStock > 0 ? `, ${lineasStock} con stock inicial cargado` : ""
+    }${salteados > 0 ? `, ${salteados} salteado(s) por SKU existente` : ""}.`
   );
 }

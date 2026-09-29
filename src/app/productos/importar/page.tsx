@@ -21,8 +21,9 @@ export default async function ImportarProductos({
       <Card className="mb-4">
         <h2 className="mb-1 font-semibold">1. Descargá la plantilla</h2>
         <p className="mb-3 text-sm text-soft">
-          Completala en Excel o Google Sheets. La hoja &ldquo;Instrucciones&rdquo; explica los
-          valores válidos.
+          Completala en Excel o Google Sheets. Además del producto podés cargar N° de lote,
+          vencimiento, cantidad inicial, ubicación y costo: con eso se registra el stock inicial
+          como ingreso trazable. La hoja &ldquo;Instrucciones&rdquo; explica los valores válidos.
         </p>
         <a
           href="/api/productos/plantilla"
