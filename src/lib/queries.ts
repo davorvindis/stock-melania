@@ -219,9 +219,8 @@ export async function getAuditLogs(limit = 200): Promise<AuditRow[]> {
 
 // entradas (ingreso externo) vs salidas (egreso externo) por día — transferencias internas no cuentan
 export async function getDailyFlow(days = 14) {
-  const since = new Date();
-  since.setDate(since.getDate() - (days - 1));
-  since.setHours(0, 0, 0, 0);
+  // buckets por día calendario argentino, terminando en HOY (el server corre en UTC)
+  const since = new Date(Date.now() - days * 86400000);
   const { data, error } = await db()
     .from("inventory_movements")
     .select("occurred_at, quantity, from_location_id, to_location_id")
@@ -233,10 +232,8 @@ export async function getDailyFlow(days = 14) {
     month: "2-digit",
   });
   const buckets = new Map<string, { label: string; inQty: number; outQty: number }>();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(since);
-    d.setDate(since.getDate() + i);
-    const label = fmt.format(d);
+  for (let i = days - 1; i >= 0; i--) {
+    const label = fmt.format(new Date(Date.now() - i * 86400000));
     buckets.set(label, { label, inQty: 0, outQty: 0 });
   }
   for (const m of data ?? []) {
