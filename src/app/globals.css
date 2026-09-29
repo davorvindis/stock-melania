@@ -20,3 +20,12 @@ body {
   color: var(--color-ink);
   font-family: var(--font-montserrat), "Helvetica Neue", Arial, sans-serif;
 }
+
+/* scroll horizontal sin barra visible (nav) */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

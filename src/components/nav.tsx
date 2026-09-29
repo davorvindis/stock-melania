@@ -23,7 +23,7 @@ export function Nav() {
     .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
     .sort((a, b) => b.href.length - a.href.length)[0];
   return (
-    <nav className="flex gap-1 overflow-x-auto pb-3 -mx-1">
+    <nav className="no-scrollbar flex gap-1 overflow-x-auto pb-3 -mx-1">
       {items.map((item) => {
         const active = best?.href === item.href;
         return (
