@@ -59,7 +59,8 @@ export async function cambiarPin(formData: FormData) {
   const { error } = await db().auth.admin.updateUserById(user.id, { password: nuevo.data });
   if (error) redirect(`${back}?error=${encodeURIComponent(error.message)}`);
   await db().from("profiles").update({ must_change_pin: false }).eq("id", user.id);
-  await db().from("audit_logs").insert({ actor: user.email, action: "user:pin_changed", entity: "profiles", entity_id: user.id });
+  const { data: perfil } = await db().from("profiles").select("alias").eq("id", user.id).maybeSingle();
+  await db().from("audit_logs").insert({ actor: perfil?.alias ?? user.email, action: "user:pin_changed", entity: "profiles", entity_id: user.id });
   // cambiar la contraseña invalida la sesión: re-entrar con el PIN nuevo
   const { error: reErr } = await sb.auth.signInWithPassword({ email: user.email!, password: nuevo.data });
   if (reErr) redirect(`/login?error=${encodeURIComponent("PIN actualizado. Entrá de nuevo.")}`);

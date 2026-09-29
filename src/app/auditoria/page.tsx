@@ -12,6 +12,13 @@ const ACCIONES: Record<string, string> = {
   "count:approve": "Conteo aprobado",
   "count:reject": "Conteo rechazado",
   "lot:status": "Cambio estado de lote",
+  "user:create": "Alta de usuario",
+  "user:update": "Edición de usuario",
+  "user:pin_reset": "Blanqueo de PIN",
+  "user:pin_changed": "Cambio de PIN propio",
+  "product:create": "Alta de producto",
+  "product:update": "Edición de producto",
+  "product:import": "Importación de productos",
 };
 
 function describir(action: string): string {
@@ -21,6 +28,31 @@ function describir(action: string): string {
     return `Movimiento: ${MOVEMENT_LABELS[tipo] ?? tipo}`;
   }
   return action;
+}
+
+const ESTADOS_LOTE: Record<string, string> = {
+  ACTIVE: "Liberado", QUARANTINE: "Cuarentena", BLOCKED: "Bloqueado",
+  EXPIRED: "Vencido", DEPLETED: "Agotado",
+};
+
+// resume el detalle en lenguaje humano; nunca muestra JSON crudo ni UUIDs
+function detalleLegible(detail: Record<string, unknown> | null): string {
+  if (!detail) return "—";
+  const partes: string[] = [];
+  if (typeof detail.before === "string" && typeof detail.after === "string") {
+    partes.push(`${ESTADOS_LOTE[detail.before] ?? detail.before} → ${ESTADOS_LOTE[detail.after] ?? detail.after}`);
+  }
+  if (detail.quantity !== undefined) partes.push(`Cantidad: ${detail.quantity}`);
+  if (detail.creados !== undefined) partes.push(`Creados: ${detail.creados}`);
+  if (detail.salteados !== undefined && Number(detail.salteados) > 0) partes.push(`salteados: ${detail.salteados}`);
+  if (typeof detail.lines === "number") partes.push(`Líneas: ${detail.lines}`);
+  if (typeof detail.remito === "string" && detail.remito) partes.push(`Remito ${detail.remito}`);
+  if (typeof detail.sku === "string") partes.push(detail.sku);
+  if (typeof detail.alias === "string") partes.push(`Alias: ${detail.alias}`);
+  if (typeof detail.role === "string") partes.push(`Rol: ${detail.role}`);
+  if (detail.active !== undefined) partes.push(detail.active ? "activo" : "desactivado");
+  if (typeof detail.reason === "string" && detail.reason) partes.push(`Motivo: ${detail.reason}`);
+  return partes.length ? partes.join(" · ") : "—";
 }
 
 export default async function Auditoria({
@@ -65,7 +97,7 @@ export default async function Auditoria({
             </div>
             <div className="mt-1 text-xs text-soft">
               {l.actor ?? "—"}
-              {l.detail?.reason ? ` · ${String(l.detail.reason)}` : ""}
+              {detalleLegible(l.detail) !== "—" ? ` · ${detalleLegible(l.detail)}` : ""}
             </div>
           </div>
         ))}
@@ -87,9 +119,7 @@ export default async function Auditoria({
                 <td className={`${td} whitespace-nowrap`}>{fmtDateTime(l.at)}</td>
                 <td className={td}>{describir(l.action)}</td>
                 <td className={td}>{l.actor ?? "—"}</td>
-                <td className={`${td} text-xs text-soft`}>
-                  {l.detail ? JSON.stringify(l.detail).slice(0, 80) : "—"}
-                </td>
+                <td className={`${td} text-xs text-soft`}>{detalleLegible(l.detail)}</td>
               </tr>
             ))}
           </tbody>
