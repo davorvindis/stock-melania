@@ -1,5 +1,5 @@
 import { getAuditLogs } from "@/lib/queries";
-import { fmtDateTime } from "@/lib/types";
+import { fmtDateTime, MOVEMENT_LABELS } from "@/lib/types";
 import { Card, PageTitle, th, td } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,10 @@ const ACCIONES: Record<string, string> = {
 
 function describir(action: string): string {
   if (ACCIONES[action]) return ACCIONES[action];
-  if (action.startsWith("movement:")) return `Movimiento ${action.slice(9)}`;
+  if (action.startsWith("movement:")) {
+    const tipo = action.slice(9);
+    return `Movimiento: ${MOVEMENT_LABELS[tipo] ?? tipo}`;
+  }
   return action;
 }
 

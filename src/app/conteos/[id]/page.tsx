@@ -87,7 +87,30 @@ export default async function ConteoDetalle({
         <>
           <Card>
             <h2 className="mb-3 font-semibold">Teórico vs físico</h2>
-            <div className="overflow-x-auto">
+            <div className="space-y-2 sm:hidden">
+              {diffs.map((l) => (
+                <div key={l.id} className="rounded-lg border border-blush-100 p-3">
+                  <div className="text-sm font-medium">
+                    {l.product.name}
+                    {l.lot ? <span className="font-normal text-soft"> · lote {l.lot.code}</span> : null}
+                  </div>
+                  <div className="mt-1 flex items-baseline justify-between text-sm">
+                    <span className="text-soft">
+                      Teórico {fmtQty(l.expected)} · físico {fmtQty(l.counted ?? 0)}
+                    </span>
+                    <span
+                      className={`font-display text-2xl leading-none ${
+                        l.diff === 0 ? "text-emerald-700" : "text-red-700"
+                      }`}
+                    >
+                      {l.diff > 0 ? "+" : ""}
+                      {fmtQty(l.diff)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-line">
