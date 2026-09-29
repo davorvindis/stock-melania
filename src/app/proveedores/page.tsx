@@ -40,7 +40,23 @@ export default async function Proveedores({
         </form>
       </Card>
 
-      <Card>
+      <div className="space-y-2 md:hidden">
+        {suppliers.map((s) => (
+          <div key={s.id} className="rounded-lg border border-blush-100 bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{s.name}</span>
+              <span className="text-xs text-soft">{s.active ? "Activo" : "Inactivo"}</span>
+            </div>
+            {(s.cuit || s.contact) && (
+              <div className="mt-1 text-xs text-soft">
+                {[s.cuit, s.contact].filter(Boolean).join(" · ")}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <Card className="hidden md:block">
         <table className="w-full">
           <thead>
             <tr className="border-b border-line">

@@ -26,3 +26,8 @@
 - Paleta de marca: blush #EDB6B1, tinta #2E2E2E, rosa profundo #A85751 para acciones.
 - Tipografías del sitio oficial: Bebas Neue (títulos/números) + Montserrat (cuerpo).
 - Nav con estado activo (client component).
+
+## 2026-09-29 — Adaptación mobile
+
+- Tablas (dashboard, stock, movimientos, productos, proveedores) se vuelven tarjetas apiladas en pantallas chicas; tabla solo desde md.
+- Componente MovementCard compartido; reversión con botones táctiles en mobile.

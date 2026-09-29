@@ -64,7 +64,23 @@ export default async function Productos({
         </form>
       </Card>
 
-      <Card>
+      <div className="space-y-2 md:hidden">
+        {products.map((p) => (
+          <div key={p.id} className="rounded-lg border border-blush-100 bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{p.name}</span>
+              <span className="text-xs text-soft">{p.active ? "Activo" : "Inactivo"}</span>
+            </div>
+            <div className="mt-0.5 font-mono text-xs text-soft">{p.sku}</div>
+            <div className="mt-1 text-xs text-soft">
+              {TIPOS.find(([v]) => v === p.type)?.[1] ?? p.type} · {p.unit} · mínimo{" "}
+              {fmtQty(p.min_stock)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Card className="hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

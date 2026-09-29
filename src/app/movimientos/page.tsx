@@ -1,9 +1,46 @@
-import { getMovements } from "@/lib/queries";
+import { getMovements, type MovementRow } from "@/lib/queries";
 import { revertirMovimiento } from "@/lib/actions";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, th, td } from "@/components/ui";
+import { MovementCard, movementBadgeClass } from "@/components/movement-card";
 
 export const dynamic = "force-dynamic";
+
+function RevertForm({ movement, compact = false }: { movement: MovementRow; compact?: boolean }) {
+  return (
+    <details className={compact ? "" : "mt-2"}>
+      <summary className="cursor-pointer py-1 text-xs font-medium text-rose-deep hover:underline">
+        Revertir
+      </summary>
+      <form
+        action={revertirMovimiento}
+        className={compact ? "mt-2 space-y-2" : "mt-2 flex flex-wrap gap-2"}
+      >
+        <input type="hidden" name="movimiento" value={movement.id} />
+        <input
+          type="text"
+          name="actor"
+          placeholder="Tu nombre"
+          required
+          className={`rounded-lg border border-line px-3 py-2 text-sm ${compact ? "w-full" : "w-36"}`}
+        />
+        <input
+          type="text"
+          name="motivo"
+          placeholder="Motivo"
+          required
+          className={`rounded-lg border border-line px-3 py-2 text-sm ${compact ? "w-full" : "w-40"}`}
+        />
+        <button
+          type="submit"
+          className={`rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white ${compact ? "w-full" : ""}`}
+        >
+          Confirmar reversión
+        </button>
+      </form>
+    </details>
+  );
+}
 
 export default async function Movimientos({
   searchParams,
@@ -18,10 +55,28 @@ export default async function Movimientos({
     <div>
       <PageTitle>Movimientos</PageTitle>
       <Flash ok={ok} error={error} />
-      <Card>
-        <p className="mb-3 text-sm text-soft">
-          El historial es permanente: los errores se corrigen con una reversión, nunca borrando.
-        </p>
+
+      <p className="mb-3 text-sm text-soft">
+        El historial es permanente: los errores se corrigen con una reversión, nunca borrando.
+      </p>
+
+      {/* mobile: tarjetas */}
+      <div className="space-y-2 md:hidden">
+        {movements.map((m) => {
+          const yaRevertido = revertidos.has(m.id);
+          return (
+            <div key={m.id} className={yaRevertido ? "opacity-50" : ""}>
+              <MovementCard movement={m}>
+                {m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} compact />}
+                {yaRevertido && <div className="mt-1 text-xs text-soft">Revertido</div>}
+              </MovementCard>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* escritorio: tabla */}
+      <Card className="hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -45,15 +100,7 @@ export default async function Movimientos({
                     <td className={`${td} whitespace-nowrap`}>{fmtDateTime(m.occurred_at)}</td>
                     <td className={td}>
                       <span
-                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-                          m.type === "RECEIPT"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : m.type === "REVERSAL"
-                              ? "bg-stone-200 text-stone-700"
-                              : m.type.includes("QUARANTINE")
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-blush-100 text-rose-deeper"
-                        }`}
+                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${movementBadgeClass(m.type)}`}
                       >
                         {MOVEMENT_LABELS[m.type] ?? m.type}
                       </span>
@@ -67,36 +114,7 @@ export default async function Movimientos({
                     <td className={td}>{m.reason ?? "—"}</td>
                     <td className={td}>{m.actor ?? "—"}</td>
                     <td className={td}>
-                      {m.type !== "REVERSAL" && !yaRevertido && (
-                        <details>
-                          <summary className="cursor-pointer text-xs text-rose-deep hover:underline">
-                            Revertir
-                          </summary>
-                          <form action={revertirMovimiento} className="mt-2 space-y-2">
-                            <input type="hidden" name="movimiento" value={m.id} />
-                            <input
-                              type="text"
-                              name="actor"
-                              placeholder="Tu nombre"
-                              required
-                              className="w-36 rounded border border-line px-2 py-1 text-xs"
-                            />
-                            <input
-                              type="text"
-                              name="motivo"
-                              placeholder="Motivo"
-                              required
-                              className="w-36 rounded border border-line px-2 py-1 text-xs"
-                            />
-                            <button
-                              type="submit"
-                              className="rounded bg-rose-deep px-3 py-1 text-xs font-medium text-white"
-                            >
-                              Confirmar reversión
-                            </button>
-                          </form>
-                        </details>
-                      )}
+                      {m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} />}
                       {yaRevertido && <span className="text-xs text-soft">Revertido</span>}
                     </td>
                   </tr>

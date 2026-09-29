@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getBalances, getMovements, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
+import { MovementCard } from "@/components/movement-card";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +82,12 @@ export default async function Dashboard() {
             Ver todos →
           </Link>
         </div>
-        <div className="overflow-x-auto">
+        <div className="space-y-2 sm:hidden">
+          {movements.map((m) => (
+            <MovementCard key={m.id} movement={m} />
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full">
             <thead>
               <tr className="border-b border-line">
