@@ -1,13 +1,20 @@
 import Link from "next/link";
-import { getBalances, getMovements, isAvailable } from "@/lib/queries";
+import { getBalances, getMovements, getDailyFlow, getCounts, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
 import { MovementCard } from "@/components/movement-card";
+import { HBarChart, DailyFlowChart } from "@/components/charts";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [balances, movements] = await Promise.all([getBalances(), getMovements(8)]);
+  const [balances, movements, dailyFlow, counts] = await Promise.all([
+    getBalances(),
+    getMovements(8),
+    getDailyFlow(14),
+    getCounts(),
+  ]);
+  const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
   const fisico = balances.reduce((s, b) => s + Number(b.quantity), 0);
   const disponible = balances.filter(isAvailable).reduce((s, b) => s + Number(b.quantity), 0);
@@ -45,6 +52,36 @@ export default async function Dashboard() {
         <Stat label="Disponibles para venta" value={fmtQty(disponible)} />
         <Stat label="En cuarentena / bloqueado" value={fmtQty(enCuarentena)} alert={enCuarentena > 0} />
         <Stat label="Productos bajo mínimo" value={bajoMinimo.length} alert={bajoMinimo.length > 0} />
+      </div>
+
+      {conteosARevisar.length > 0 && (
+        <Card className="mt-4 border-amber-200">
+          <h2 className="mb-1 font-semibold text-amber-800">
+            {conteosARevisar.length} conteo(s) esperando revisión
+          </h2>
+          <p className="text-sm">
+            Hay diferencias de conteo sin aprobar ni rechazar.{" "}
+            <Link href="/conteos" className="font-medium text-rose-deep hover:underline">
+              Ir a conteos →
+            </Link>
+          </p>
+        </Card>
+      )}
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <h2 className="mb-3 font-semibold">Disponible por producto</h2>
+          <HBarChart
+            items={[...porProducto.values()]
+              .sort((a, b) => b.qty - a.qty)
+              .slice(0, 8)
+              .map((p) => ({ label: p.name, value: p.qty }))}
+          />
+        </Card>
+        <Card>
+          <h2 className="mb-3 font-semibold">Entradas vs salidas — últimos 14 días</h2>
+          <DailyFlowChart days={dailyFlow} />
+        </Card>
       </div>
 
       {bajoMinimo.length > 0 && (

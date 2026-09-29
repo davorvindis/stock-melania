@@ -190,3 +190,108 @@ export async function crearProveedor(formData: FormData) {
   }
   okRedirect("/proveedores", `Proveedor ${d.nombre} creado`);
 }
+
+// ── Conteo físico ciego ─────────────────────────────────────────────
+
+const abrirConteoSchema = z.object({
+  ubicacion: uuid,
+  actor: z.string().trim().min(1, "Indicá quién abre el conteo"),
+});
+
+export async function abrirConteo(formData: FormData) {
+  const back = "/conteos";
+  const parsed = abrirConteoSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+  const { data, error } = await db().rpc("open_count", {
+    p_location: d.ubicacion,
+    p_actor: d.actor,
+  });
+  if (error) backWithError(back, error.message);
+  revalidatePath("/", "layout");
+  redirect(`/conteos/${data}?ok=${encodeURIComponent("Conteo abierto. Cargá las cantidades físicas.")}`);
+}
+
+export async function guardarConteo(formData: FormData) {
+  const countId = String(formData.get("conteo") ?? "");
+  const actor = String(formData.get("actor") ?? "").trim();
+  const cerrar = formData.get("cerrar") === "1";
+  const back = `/conteos/${countId}`;
+  if (!countId) backWithError("/conteos", "Conteo inválido");
+  if (!actor) backWithError(back, "Indicá tu nombre antes de guardar");
+
+  const lines: { line_id: string; counted: string }[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("linea_") && String(value).trim() !== "") {
+      const n = Number(value);
+      if (isNaN(n) || n < 0) backWithError(back, "Las cantidades deben ser números mayores o iguales a 0");
+      lines.push({ line_id: key.slice(6), counted: String(value) });
+    }
+  }
+  if (lines.length > 0) {
+    const { error } = await db().rpc("save_count_lines", {
+      p_count: countId,
+      p_lines: lines,
+      p_actor: actor,
+    });
+    if (error) backWithError(back, error.message);
+  }
+  if (cerrar) {
+    const { error } = await db().rpc("close_count", { p_count: countId, p_actor: actor });
+    if (error) backWithError(back, error.message);
+    okRedirect(back, "Conteo cerrado. Un responsable debe revisar las diferencias.");
+  }
+  okRedirect(back, "Avance guardado");
+}
+
+const revisarSchema = z.object({
+  conteo: uuid,
+  actor: z.string().trim().min(1, "Indicá quién revisa"),
+  motivo: z.string().trim().min(3, "Indicá el motivo de la decisión"),
+  decision: z.enum(["aprobar", "rechazar"]),
+});
+
+export async function revisarConteo(formData: FormData) {
+  const parsed = revisarSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/conteos", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = `/conteos/${d.conteo}`;
+  const { error } = await db().rpc("review_count", {
+    p_count: d.conteo,
+    p_actor: d.actor,
+    p_approve: d.decision === "aprobar",
+    p_reason: d.motivo,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(
+    back,
+    d.decision === "aprobar"
+      ? "Conteo aprobado: se generaron los ajustes de stock."
+      : "Conteo rechazado: el stock no se modificó."
+  );
+}
+
+// ── Estado de lote (cuarentena / bloqueo / liberación) ──────────────
+
+const estadoLoteSchema = z.object({
+  lote: uuid,
+  estado: z.enum(["ACTIVE", "QUARANTINE", "BLOCKED", "EXPIRED", "DEPLETED"]),
+  actor: z.string().trim().min(1, "Indicá quién hace el cambio"),
+  motivo: z.string().trim().min(3, "Indicá el motivo"),
+  volver: z.string().optional(),
+});
+
+export async function cambiarEstadoLote(formData: FormData) {
+  const parsed = estadoLoteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/lotes", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = d.volver || "/lotes";
+  const { error } = await db().rpc("change_lot_status", {
+    p_lot: d.lote,
+    p_status: d.estado,
+    p_actor: d.actor,
+    p_reason: d.motivo,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, "Estado del lote actualizado");
+}

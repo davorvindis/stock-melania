@@ -31,3 +31,13 @@
 
 - Tablas (dashboard, stock, movimientos, productos, proveedores) se vuelven tarjetas apiladas en pantallas chicas; tabla solo desde md.
 - Componente MovementCard compartido; reversión con botones táctiles en mobile.
+
+## 2026-09-29 — Conteo ciego, lotes, auditoría, Excel, búsqueda, gráficos
+
+- Conteo físico ciego: abrir por ubicación (snapshot), operador carga físico sin ver teórico, cierre inmutable, comparación y aprobación/rechazo; aprobar genera COUNT_ADJUSTMENT idempotentes.
+- Lotes: listado con búsqueda, detalle con trazabilidad completa (origen/costos/remito, saldos, historial) y cambio de estado (cuarentena/bloqueo/liberación) con motivo auditado.
+- Auditoría: pantalla del log append-only con filtro.
+- Exportación Excel (exceljs encapsulado): stock y movimientos.
+- Stock y Movimientos: buscador, filtros (ubicación/disponibilidad/tipo) y ordenamiento por cabecera.
+- Dashboard: gráficos (disponible por producto; entradas vs salidas 14 días, paleta validada CVD) y alerta de conteos a revisar.
+- E2E verificado contra DB real: conteo 13→12 ajusta a 12 tras aprobar; lote en cuarentena no vendible.
