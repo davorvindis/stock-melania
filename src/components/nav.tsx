@@ -25,7 +25,7 @@ export function Nav({ sections }: { sections: string[] }) {
     .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
     .sort((a, b) => b.href.length - a.href.length)[0];
   return (
-    <nav className="no-scrollbar flex gap-1 overflow-x-auto pb-3 -mx-1">
+    <nav className="no-scrollbar flex gap-1 overflow-x-auto pb-3 -mx-1 md:flex-wrap md:overflow-visible">
       {visible.map((item) => {
         const active = best?.href === item.href;
         return (
