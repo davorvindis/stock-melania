@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { getBalances, getLocations, isAvailable, type BalanceRow } from "@/lib/queries";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
 import { Card, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
@@ -26,6 +27,7 @@ type SP = {
 };
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireSection("stock");
   const sp = await searchParams;
   const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
 

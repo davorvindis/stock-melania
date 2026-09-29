@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getProducts, getLocations, getSuppliers } from "@/lib/queries";
 import { registrarIngreso } from "@/lib/actions";
@@ -10,6 +11,7 @@ export default async function NuevoIngreso({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireSection("ingresos");
   const { ok, error } = await searchParams;
   const [products, locations, suppliers] = await Promise.all([
     getProducts(),
@@ -26,15 +28,9 @@ export default async function NuevoIngreso({
         <form action={registrarIngreso} className="space-y-4">
           <input type="hidden" name="idem" value={randomUUID()} />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={label}>Fecha de ingreso *</label>
-              <input type="date" name="fecha" defaultValue={hoy} required className={input} />
-            </div>
-            <div>
-              <label className={label}>Quién registra *</label>
-              <input type="text" name="actor" placeholder="Tu nombre" required className={input} />
-            </div>
+          <div>
+            <label className={label}>Fecha de ingreso *</label>
+            <input type="date" name="fecha" defaultValue={hoy} required className={input} />
           </div>
 
           <div>

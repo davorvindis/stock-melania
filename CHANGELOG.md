@@ -41,3 +41,12 @@
 - Stock y Movimientos: buscador, filtros (ubicación/disponibilidad/tipo) y ordenamiento por cabecera.
 - Dashboard: gráficos (disponible por producto; entradas vs salidas 14 días, paleta validada CVD) y alerta de conteos a revisar.
 - E2E verificado contra DB real: conteo 13→12 ajusta a 12 tras aprobar; lote en cuarentena no vendible.
+
+## 2026-09-29 — Usuarios, roles y permisos + edición e importación de productos
+
+- Login con email, alias o DNI + PIN de 6 dígitos (Supabase Auth). PIN temporal en el alta con cambio obligado al primer ingreso; blanqueo por admin.
+- Configuración (solo ADMIN): alta de usuarios, roles ADMIN/MANAGER/OPERATOR, activar/desactivar, permisos por sección (checkboxes que sobreescriben el rol).
+- Autorización server-side en páginas, actions y exports; nav filtrada por permisos. Aprobar conteos = ADMIN; revertir y estado de lote = ADMIN/MANAGER.
+- El actor de cada movimiento sale de la sesión (adiós campo "tu nombre").
+- Productos: edición completa (/productos/[id]) e importación masiva vía plantilla Excel con validación total antes de insertar (SKUs existentes se saltean).
+- Reemplaza el Basic Auth compartido. E2E Playwright: login DNI→cambio PIN→roles→bloqueos→relogin; import crea/saltea.

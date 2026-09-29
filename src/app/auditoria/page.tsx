@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { getAuditLogs } from "@/lib/queries";
 import { fmtDateTime, MOVEMENT_LABELS } from "@/lib/types";
 import { Card, PageTitle, th, td } from "@/components/ui";
@@ -27,6 +28,7 @@ export default async function Auditoria({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
+  await requireSection("auditoria");
   const { q } = await searchParams;
   let logs = await getAuditLogs(300);
   if (q) {

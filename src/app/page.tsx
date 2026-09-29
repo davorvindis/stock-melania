@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/auth";
 import { getBalances, getMovements, getDailyFlow, getCounts, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -8,6 +9,7 @@ import { HBarChart, DailyFlowChart } from "@/components/charts";
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
+  await requireUser();
   const [balances, movements, dailyFlow, counts] = await Promise.all([
     getBalances(),
     getMovements(8),

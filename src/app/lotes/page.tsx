@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireSection } from "@/lib/auth";
 import { getLots } from "@/lib/queries";
 import { LOT_STATUS_LABELS, fmtDate, lotBadgeClass } from "@/lib/types";
 import { Card, Flash, PageTitle } from "@/components/ui";
@@ -10,6 +11,7 @@ export default async function Lotes({
 }: {
   searchParams: Promise<{ ok?: string; error?: string; q?: string }>;
 }) {
+  await requireSection("lotes");
   const { ok, error, q } = await searchParams;
   let lots = await getLots();
   if (q) {

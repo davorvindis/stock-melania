@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { getLotDetail } from "@/lib/queries";
 import { cambiarEstadoLote } from "@/lib/actions";
 import {
@@ -28,6 +29,7 @@ export default async function LoteDetalle({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  const user = await requireSection("lotes");
   const { id } = await params;
   const { ok, error } = await searchParams;
   const { lot, movements, balances, entryLines } = await getLotDetail(id);
@@ -99,6 +101,7 @@ export default async function LoteDetalle({
         </Card>
       </div>
 
+      {(user.role === "ADMIN" || user.role === "MANAGER") && (
       <Card className="mt-4">
         <h2 className="mb-1 font-semibold">Cambiar estado</h2>
         <p className="mb-3 text-sm text-soft">
@@ -119,10 +122,6 @@ export default async function LoteDetalle({
             </select>
           </div>
           <div>
-            <label className={label}>Quién *</label>
-            <input type="text" name="actor" required className={input} placeholder="Tu nombre" />
-          </div>
-          <div>
             <label className={label}>Motivo *</label>
             <input type="text" name="motivo" required className={input} placeholder="ej. control de calidad" />
           </div>
@@ -133,6 +132,7 @@ export default async function LoteDetalle({
           </div>
         </form>
       </Card>
+      )}
 
       <h2 className="mb-2 mt-6 font-display text-2xl tracking-wide">Historial del lote</h2>
       <div className="space-y-2 md:hidden">

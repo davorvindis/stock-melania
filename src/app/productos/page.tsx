@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { requireSection } from "@/lib/auth";
 import { getProducts } from "@/lib/queries";
 import { crearProducto } from "@/lib/actions";
 import { fmtQty } from "@/lib/types";
@@ -19,12 +21,21 @@ export default async function Productos({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireSection("productos");
   const { ok, error } = await searchParams;
   const products = await getProducts();
 
   return (
     <div>
-      <PageTitle>Productos</PageTitle>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <PageTitle>Productos</PageTitle>
+        <Link
+          href="/productos/importar"
+          className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush"
+        >
+          Importar desde Excel
+        </Link>
+      </div>
       <Flash ok={ok} error={error} />
 
       <Card className="mb-4">
@@ -66,7 +77,7 @@ export default async function Productos({
 
       <div className="space-y-2 md:hidden">
         {products.map((p) => (
-          <div key={p.id} className="rounded-lg border border-blush-100 bg-white p-3">
+          <Link key={p.id} href={`/productos/${p.id}`} className="block rounded-lg border border-blush-100 bg-white p-3 hover:border-blush">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">{p.name}</span>
               <span className="text-xs text-soft">{p.active ? "Activo" : "Inactivo"}</span>
@@ -74,9 +85,9 @@ export default async function Productos({
             <div className="mt-0.5 font-mono text-xs text-soft">{p.sku}</div>
             <div className="mt-1 text-xs text-soft">
               {TIPOS.find(([v]) => v === p.type)?.[1] ?? p.type} · {p.unit} · mínimo{" "}
-              {fmtQty(p.min_stock)}
+              {fmtQty(p.min_stock)} · tocá para editar
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -91,6 +102,7 @@ export default async function Productos({
                 <th className={th}>Unidad</th>
                 <th className={th}>Stock mínimo</th>
                 <th className={th}>Estado</th>
+                <th className={th}></th>
               </tr>
             </thead>
             <tbody>
@@ -102,6 +114,11 @@ export default async function Productos({
                   <td className={td}>{p.unit}</td>
                   <td className={td}>{fmtQty(p.min_stock)}</td>
                   <td className={td}>{p.active ? "Activo" : "Inactivo"}</td>
+                  <td className={td}>
+                    <Link href={`/productos/${p.id}`} className="text-xs font-medium text-rose-deep hover:underline">
+                      Editar
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

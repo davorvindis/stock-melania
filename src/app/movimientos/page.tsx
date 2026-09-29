@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { getMovements, type MovementRow } from "@/lib/queries";
 import { revertirMovimiento } from "@/lib/actions";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
@@ -19,13 +20,6 @@ function RevertForm({ movement, compact = false }: { movement: MovementRow; comp
         <input type="hidden" name="movimiento" value={movement.id} />
         <input
           type="text"
-          name="actor"
-          placeholder="Tu nombre"
-          required
-          className={`rounded-lg border border-line px-3 py-2 text-sm ${compact ? "w-full" : "w-36"}`}
-        />
-        <input
-          type="text"
           name="motivo"
           placeholder="Motivo"
           required
@@ -45,6 +39,8 @@ function RevertForm({ movement, compact = false }: { movement: MovementRow; comp
 type SP = { ok?: string; error?: string; q?: string; tipo?: string; sort?: string; dir?: string };
 
 export default async function Movimientos({ searchParams }: { searchParams: Promise<SP> }) {
+  const user = await requireSection("movimientos");
+  const puedeRevertir = user.role === "ADMIN" || user.role === "MANAGER";
   const sp = await searchParams;
   const { ok, error } = sp;
   const all = await getMovements(500);
@@ -118,7 +114,7 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
           return (
             <div key={m.id} className={yaRevertido ? "opacity-50" : ""}>
               <MovementCard movement={m}>
-                {m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} compact />}
+                {puedeRevertir && m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} compact />}
                 {yaRevertido && <div className="mt-1 text-xs text-soft">Revertido</div>}
               </MovementCard>
             </div>
@@ -165,7 +161,7 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
                     <td className={td}>{m.reason ?? "—"}</td>
                     <td className={td}>{m.actor ?? "—"}</td>
                     <td className={td}>
-                      {m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} />}
+                      {puedeRevertir && m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} />}
                       {yaRevertido && <span className="text-xs text-soft">Revertido</span>}
                     </td>
                   </tr>

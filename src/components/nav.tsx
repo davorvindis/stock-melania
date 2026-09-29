@@ -4,27 +4,29 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { href: "/", label: "Dashboard" },
-  { href: "/stock", label: "Stock" },
-  { href: "/lotes", label: "Lotes" },
-  { href: "/ingresos/nuevo", label: "Nuevo ingreso" },
-  { href: "/movimientos/nuevo", label: "Nuevo movimiento" },
-  { href: "/movimientos", label: "Movimientos" },
-  { href: "/conteos", label: "Conteos" },
-  { href: "/productos", label: "Productos" },
-  { href: "/proveedores", label: "Proveedores" },
-  { href: "/auditoria", label: "Auditoría" },
+  { href: "/", label: "Dashboard", section: "dashboard" },
+  { href: "/stock", label: "Stock", section: "stock" },
+  { href: "/lotes", label: "Lotes", section: "lotes" },
+  { href: "/ingresos/nuevo", label: "Nuevo ingreso", section: "ingresos" },
+  { href: "/movimientos/nuevo", label: "Nuevo movimiento", section: "movimientos" },
+  { href: "/movimientos", label: "Movimientos", section: "movimientos" },
+  { href: "/conteos", label: "Conteos", section: "conteos" },
+  { href: "/productos", label: "Productos", section: "productos" },
+  { href: "/proveedores", label: "Proveedores", section: "proveedores" },
+  { href: "/auditoria", label: "Auditoría", section: "auditoria" },
+  { href: "/configuracion", label: "Configuración", section: "configuracion" },
 ];
 
-export function Nav() {
+export function Nav({ sections }: { sections: string[] }) {
   const pathname = usePathname();
+  const visible = items.filter((i) => sections.includes(i.section));
   // activo = el ítem cuyo href sea el prefijo más largo de la ruta actual
-  const best = items
+  const best = visible
     .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
     .sort((a, b) => b.href.length - a.href.length)[0];
   return (
     <nav className="no-scrollbar flex gap-1 overflow-x-auto pb-3 -mx-1">
-      {items.map((item) => {
+      {visible.map((item) => {
         const active = best?.href === item.href;
         return (
           <Link

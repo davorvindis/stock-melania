@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { getSuppliers } from "@/lib/queries";
 import { crearProveedor } from "@/lib/actions";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
@@ -9,6 +10,7 @@ export default async function Proveedores({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireSection("proveedores");
   const { ok, error } = await searchParams;
   const suppliers = await getSuppliers();
 

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "./db";
+import { requireSection, requireRole } from "./auth";
 import { NEEDS_DESTINATION, OPERABLE_TYPES } from "./types";
 
 function backWithError(path: string, message: string): never {
@@ -32,12 +33,12 @@ const ingresoSchema = z.object({
   costo_unitario: z.string().optional(),
   proveedor: z.string().optional(),
   ubicacion: uuid,
-  actor: z.string().trim().min(1, "Indicá quién registra el ingreso"),
   notas: z.string().trim().optional(),
   idem: z.string().min(8),
 });
 
 export async function registrarIngreso(formData: FormData) {
+  const user = await requireSection("ingresos");
   const back = "/ingresos/nuevo";
   const parsed = ingresoSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
@@ -54,7 +55,7 @@ export async function registrarIngreso(formData: FormData) {
     p_remito: d.remito || null,
     p_invoice: d.factura || null,
     p_notes: d.notas || null,
-    p_actor: d.actor,
+    p_actor: user.alias,
     p_idem: d.idem,
     p_lines: [
       {
@@ -80,12 +81,12 @@ const movimientoSchema = z.object({
   cantidad: numeroPositivo,
   destino: z.string().optional(),
   motivo: z.string().trim().optional(),
-  actor: z.string().trim().min(1, "Indicá quién realiza el movimiento"),
   notas: z.string().trim().optional(),
   idem: z.string().min(8),
 });
 
 export async function registrarMovimiento(formData: FormData) {
+  const user = await requireSection("movimientos");
   const back = "/movimientos/nuevo";
   const parsed = movimientoSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
@@ -106,7 +107,7 @@ export async function registrarMovimiento(formData: FormData) {
     p_quantity: d.cantidad,
     p_from: fromId,
     p_to: needsDest ? d.destino : null,
-    p_actor: d.actor,
+    p_actor: user.alias,
     p_reason: d.motivo || null,
     p_notes: d.notas || null,
     p_idem: d.idem,
@@ -115,33 +116,34 @@ export async function registrarMovimiento(formData: FormData) {
   okRedirect("/movimientos", "Movimiento registrado");
 }
 
-// ── Reversión ───────────────────────────────────────────────────────
+// ── Reversión (solo admin/manager) ──────────────────────────────────
 
 const reversionSchema = z.object({
   movimiento: uuid,
-  actor: z.string().trim().min(1, "Indicá quién revierte"),
   motivo: z.string().trim().min(3, "Explicá el motivo de la reversión"),
 });
 
 export async function revertirMovimiento(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
   const back = "/movimientos";
   const parsed = reversionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
   const { error } = await db().rpc("reverse_movement", {
     p_movement: d.movimiento,
-    p_actor: d.actor,
+    p_actor: user.alias,
     p_reason: d.motivo,
   });
   if (error) backWithError(back, error.message);
   okRedirect("/movimientos", "Movimiento revertido");
 }
 
-// ── Producto ────────────────────────────────────────────────────────
+// ── Productos ───────────────────────────────────────────────────────
 
 const productoSchema = z.object({
   sku: z.string().trim().min(1, "Falta el SKU"),
   nombre: z.string().trim().min(1, "Falta el nombre"),
+  descripcion: z.string().trim().optional(),
   categoria: z.string().trim().optional(),
   unidad: z.string().trim().min(1, "Falta la unidad"),
   tipo: z.enum(["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO"]),
@@ -149,6 +151,7 @@ const productoSchema = z.object({
 });
 
 export async function crearProducto(formData: FormData) {
+  const user = await requireSection("productos");
   const back = "/productos";
   const parsed = productoSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
@@ -156,6 +159,7 @@ export async function crearProducto(formData: FormData) {
   const { error } = await db().from("products").insert({
     sku: d.sku,
     name: d.nombre,
+    description: d.descripcion || null,
     category: d.categoria || null,
     unit: d.unidad,
     type: d.tipo,
@@ -164,10 +168,58 @@ export async function crearProducto(formData: FormData) {
   if (error) {
     backWithError(back, error.code === "23505" ? `El SKU "${d.sku}" ya existe` : error.message);
   }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "product:create", entity: "products", detail: { sku: d.sku },
+  });
   okRedirect("/productos", `Producto ${d.sku} creado`);
 }
 
-// ── Proveedor ───────────────────────────────────────────────────────
+const editarProductoSchema = productoSchema.extend({
+  producto: uuid,
+  activo: z.string().optional(),
+  maneja_lote: z.string().optional(),
+  maneja_vencimiento: z.string().optional(),
+});
+
+export async function editarProducto(formData: FormData) {
+  const user = await requireSection("productos");
+  const parsed = editarProductoSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = `/productos/${d.producto}`;
+
+  const { data: antes } = await db()
+    .from("products")
+    .select("sku, name, category, unit, type, min_stock, active, tracks_lot, tracks_expiry, description")
+    .eq("id", d.producto)
+    .maybeSingle();
+  if (!antes) backWithError("/productos", "Producto inexistente");
+
+  const cambios = {
+    sku: d.sku,
+    name: d.nombre,
+    description: d.descripcion || null,
+    category: d.categoria || null,
+    unit: d.unidad,
+    type: d.tipo,
+    min_stock: d.stock_minimo,
+    active: d.activo === "on",
+    tracks_lot: d.maneja_lote === "on",
+    tracks_expiry: d.maneja_vencimiento === "on",
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await db().from("products").update(cambios).eq("id", d.producto);
+  if (error) {
+    backWithError(back, error.code === "23505" ? `El SKU "${d.sku}" ya existe` : error.message);
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "product:update", entity: "products", entity_id: d.producto,
+    detail: { before: antes, after: cambios },
+  });
+  okRedirect(back, "Producto actualizado");
+}
+
+// ── Proveedores ─────────────────────────────────────────────────────
 
 const proveedorSchema = z.object({
   nombre: z.string().trim().min(1, "Falta el nombre"),
@@ -176,6 +228,7 @@ const proveedorSchema = z.object({
 });
 
 export async function crearProveedor(formData: FormData) {
+  await requireSection("proveedores");
   const back = "/proveedores";
   const parsed = proveedorSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
@@ -193,19 +246,14 @@ export async function crearProveedor(formData: FormData) {
 
 // ── Conteo físico ciego ─────────────────────────────────────────────
 
-const abrirConteoSchema = z.object({
-  ubicacion: uuid,
-  actor: z.string().trim().min(1, "Indicá quién abre el conteo"),
-});
-
 export async function abrirConteo(formData: FormData) {
+  const user = await requireSection("conteos");
   const back = "/conteos";
-  const parsed = abrirConteoSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
-  const d = parsed.data;
+  const ubicacion = uuid.safeParse(String(formData.get("ubicacion") ?? ""));
+  if (!ubicacion.success) backWithError(back, "Elegí una ubicación");
   const { data, error } = await db().rpc("open_count", {
-    p_location: d.ubicacion,
-    p_actor: d.actor,
+    p_location: ubicacion.data,
+    p_actor: user.alias,
   });
   if (error) backWithError(back, error.message);
   revalidatePath("/", "layout");
@@ -213,12 +261,11 @@ export async function abrirConteo(formData: FormData) {
 }
 
 export async function guardarConteo(formData: FormData) {
+  const user = await requireSection("conteos");
   const countId = String(formData.get("conteo") ?? "");
-  const actor = String(formData.get("actor") ?? "").trim();
   const cerrar = formData.get("cerrar") === "1";
   const back = `/conteos/${countId}`;
   if (!countId) backWithError("/conteos", "Conteo inválido");
-  if (!actor) backWithError(back, "Indicá tu nombre antes de guardar");
 
   const lines: { line_id: string; counted: string }[] = [];
   for (const [key, value] of formData.entries()) {
@@ -232,12 +279,12 @@ export async function guardarConteo(formData: FormData) {
     const { error } = await db().rpc("save_count_lines", {
       p_count: countId,
       p_lines: lines,
-      p_actor: actor,
+      p_actor: user.alias,
     });
     if (error) backWithError(back, error.message);
   }
   if (cerrar) {
-    const { error } = await db().rpc("close_count", { p_count: countId, p_actor: actor });
+    const { error } = await db().rpc("close_count", { p_count: countId, p_actor: user.alias });
     if (error) backWithError(back, error.message);
     okRedirect(back, "Conteo cerrado. Un responsable debe revisar las diferencias.");
   }
@@ -246,19 +293,19 @@ export async function guardarConteo(formData: FormData) {
 
 const revisarSchema = z.object({
   conteo: uuid,
-  actor: z.string().trim().min(1, "Indicá quién revisa"),
   motivo: z.string().trim().min(3, "Indicá el motivo de la decisión"),
   decision: z.enum(["aprobar", "rechazar"]),
 });
 
 export async function revisarConteo(formData: FormData) {
+  const user = await requireRole("ADMIN");
   const parsed = revisarSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError("/conteos", parsed.error.issues[0].message);
   const d = parsed.data;
   const back = `/conteos/${d.conteo}`;
   const { error } = await db().rpc("review_count", {
     p_count: d.conteo,
-    p_actor: d.actor,
+    p_actor: user.alias,
     p_approve: d.decision === "aprobar",
     p_reason: d.motivo,
   });
@@ -276,12 +323,12 @@ export async function revisarConteo(formData: FormData) {
 const estadoLoteSchema = z.object({
   lote: uuid,
   estado: z.enum(["ACTIVE", "QUARANTINE", "BLOCKED", "EXPIRED", "DEPLETED"]),
-  actor: z.string().trim().min(1, "Indicá quién hace el cambio"),
   motivo: z.string().trim().min(3, "Indicá el motivo"),
   volver: z.string().optional(),
 });
 
 export async function cambiarEstadoLote(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
   const parsed = estadoLoteSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError("/lotes", parsed.error.issues[0].message);
   const d = parsed.data;
@@ -289,9 +336,64 @@ export async function cambiarEstadoLote(formData: FormData) {
   const { error } = await db().rpc("change_lot_status", {
     p_lot: d.lote,
     p_status: d.estado,
-    p_actor: d.actor,
+    p_actor: user.alias,
     p_reason: d.motivo,
   });
   if (error) backWithError(back, error.message);
   okRedirect(back, "Estado del lote actualizado");
+}
+
+// ── Importación masiva de productos desde Excel ─────────────────────
+
+export async function importarProductos(formData: FormData) {
+  const user = await requireSection("productos");
+  const back = "/productos/importar";
+  const archivo = formData.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) {
+    backWithError(back, "Subí el archivo Excel completado");
+  }
+  if (archivo.size > 2 * 1024 * 1024) backWithError(back, "El archivo no puede superar 2 MB");
+
+  const { parseProductosExcel } = await import("./export");
+  let filas, errores;
+  try {
+    ({ filas, errores } = await parseProductosExcel(await archivo.arrayBuffer()));
+  } catch {
+    backWithError(back, "No se pudo leer el archivo: usá la plantilla .xlsx");
+  }
+  if (errores.length > 0) {
+    backWithError(back, `Nada se importó. Corregí y volvé a subir: ${errores.slice(0, 5).join(" · ")}${errores.length > 5 ? ` (+${errores.length - 5} más)` : ""}`);
+  }
+  if (filas.length === 0) backWithError(back, "El archivo no tiene filas de productos");
+
+  const cli = db();
+  const { data: existentes } = await cli.from("products").select("sku");
+  const ya = new Set((existentes ?? []).map((p) => p.sku.toLowerCase()));
+  const nuevas = filas.filter((f) => !ya.has(f.sku.toLowerCase()));
+  const salteados = filas.length - nuevas.length;
+
+  if (nuevas.length > 0) {
+    const { error } = await cli.from("products").insert(
+      nuevas.map((f) => ({
+        sku: f.sku,
+        name: f.nombre,
+        description: f.descripcion,
+        category: f.categoria,
+        unit: f.unidad,
+        type: f.tipo,
+        min_stock: f.minimo,
+        tracks_lot: f.lote,
+        tracks_expiry: f.venc,
+      }))
+    );
+    if (error) backWithError(back, error.message);
+  }
+  await cli.from("audit_logs").insert({
+    actor: user.alias, action: "product:import", entity: "products",
+    detail: { creados: nuevas.length, salteados },
+  });
+  okRedirect(
+    "/productos",
+    `Importación lista: ${nuevas.length} producto(s) creado(s)${salteados > 0 ? `, ${salteados} salteado(s) por SKU existente` : ""}.`
+  );
 }

@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { getCountDetail } from "@/lib/queries";
 import { guardarConteo, revisarConteo } from "@/lib/actions";
 import { fmtQty, fmtDateTime } from "@/lib/types";
@@ -12,6 +13,7 @@ export default async function ConteoDetalle({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  const user = await requireSection("conteos");
   const { id } = await params;
   const { ok, error } = await searchParams;
   const { count, lines } = await getCountDetail(id);
@@ -38,10 +40,6 @@ export default async function ConteoDetalle({
           </p>
           <form action={guardarConteo} className="space-y-4">
             <input type="hidden" name="conteo" value={count.id} />
-            <div className="max-w-xs">
-              <label className={label}>Quién cuenta *</label>
-              <input type="text" name="actor" placeholder="Tu nombre" required className={input} />
-            </div>
             <div className="space-y-3">
               {lines.map((l) => (
                 <div
@@ -148,7 +146,10 @@ export default async function ConteoDetalle({
             </p>
           </Card>
 
-          {count.status === "CLOSED" && (
+          {count.status === "CLOSED" && user.role !== "ADMIN" && (
+            <p className="mt-4 text-sm text-soft">Esperando revisión de un admin.</p>
+          )}
+          {count.status === "CLOSED" && user.role === "ADMIN" && (
             <Card className="mt-4 border-amber-200">
               <h2 className="mb-1 font-semibold">Revisión</h2>
               <p className="mb-3 text-sm text-soft">
@@ -157,11 +158,7 @@ export default async function ConteoDetalle({
               </p>
               <form action={revisarConteo} className="grid gap-3 sm:grid-cols-2">
                 <input type="hidden" name="conteo" value={count.id} />
-                <div>
-                  <label className={label}>Quién revisa *</label>
-                  <input type="text" name="actor" required className={input} placeholder="Tu nombre" />
-                </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className={label}>Motivo de la decisión *</label>
                   <input
                     type="text"

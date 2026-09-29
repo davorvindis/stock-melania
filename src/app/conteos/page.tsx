@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireSection } from "@/lib/auth";
 import { getCounts, getLocations } from "@/lib/queries";
 import { abrirConteo } from "@/lib/actions";
 import { fmtDateTime } from "@/lib/types";
@@ -18,6 +19,7 @@ export default async function Conteos({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireSection("conteos");
   const { ok, error } = await searchParams;
   const [counts, locations] = await Promise.all([getCounts(), getLocations()]);
 
@@ -32,7 +34,7 @@ export default async function Conteos({
           Quien cuenta no ve el stock teórico. Las diferencias solo ajustan el stock si un
           responsable las aprueba.
         </p>
-        <form action={abrirConteo} className="grid gap-3 sm:grid-cols-3">
+        <form action={abrirConteo} className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className={label}>Ubicación *</label>
             <select name="ubicacion" required className={input}>
@@ -43,10 +45,6 @@ export default async function Conteos({
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className={label}>Quién abre *</label>
-            <input type="text" name="actor" placeholder="Tu nombre" required className={input} />
           </div>
           <div className="flex items-end">
             <button type="submit" className={`${button} w-full`}>

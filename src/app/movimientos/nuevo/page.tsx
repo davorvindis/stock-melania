@@ -1,3 +1,4 @@
+import { requireSection } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getBalances, getLocations, isAvailable } from "@/lib/queries";
 import { registrarMovimiento } from "@/lib/actions";
@@ -11,6 +12,7 @@ export default async function NuevoMovimiento({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireSection("movimientos");
   const { ok, error } = await searchParams;
   const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
 
@@ -22,24 +24,18 @@ export default async function NuevoMovimiento({
         <form action={registrarMovimiento} className="space-y-4">
           <input type="hidden" name="idem" value={randomUUID()} />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={label}>Tipo de movimiento *</label>
-              <select name="tipo" required className={input}>
-                {OPERABLE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {MOVEMENT_LABELS[t]}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-soft">
-                Transferencia, cuarentena y envío a proveedor necesitan destino.
-              </p>
-            </div>
-            <div>
-              <label className={label}>Quién lo realiza *</label>
-              <input type="text" name="actor" placeholder="Tu nombre" required className={input} />
-            </div>
+          <div>
+            <label className={label}>Tipo de movimiento *</label>
+            <select name="tipo" required className={input}>
+              {OPERABLE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {MOVEMENT_LABELS[t]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-soft">
+              Transferencia, cuarentena y envío a proveedor necesitan destino.
+            </p>
           </div>
 
           <div>
