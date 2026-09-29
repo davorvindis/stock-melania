@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getLotDetail } from "@/lib/queries";
 import { cambiarEstadoLote } from "@/lib/actions";
@@ -126,9 +127,9 @@ export default async function LoteDetalle({
             <input type="text" name="motivo" required className={input} placeholder="ej. control de calidad" />
           </div>
           <div className="sm:col-span-3">
-            <button type="submit" className={button}>
+            <SubmitButton className={button}>
               Confirmar cambio de estado
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </Card>

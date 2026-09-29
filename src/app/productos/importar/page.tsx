@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { importarProductos } from "@/lib/actions";
 import { Card, Flash, PageTitle, label, button } from "@/components/ui";
@@ -48,9 +49,9 @@ export default async function ImportarProductos({
               className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blush-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-rose-deeper"
             />
           </div>
-          <button type="submit" className={button}>
+          <SubmitButton className={button}>
             Importar productos
-          </button>
+          </SubmitButton>
         </form>
       </Card>
     </div>

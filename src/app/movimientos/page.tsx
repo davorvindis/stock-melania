@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getMovements, type MovementRow } from "@/lib/queries";
 import { revertirMovimiento } from "@/lib/actions";
@@ -25,12 +26,11 @@ function RevertForm({ movement, compact = false }: { movement: MovementRow; comp
           required
           className={`rounded-lg border border-line px-3 py-2 text-sm ${compact ? "w-full" : "w-40"}`}
         />
-        <button
-          type="submit"
-          className={`rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white ${compact ? "w-full" : ""}`}
+        <SubmitButton
+                  className={`rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white ${compact ? "w-full" : ""}`}
         >
           Confirmar reversión
-        </button>
+        </SubmitButton>
       </form>
     </details>
   );
@@ -94,12 +94,11 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
             </option>
           ))}
         </select>
-        <button
-          type="submit"
-          className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper sm:w-28"
+        <SubmitButton
+                  className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper sm:w-28"
         >
           Filtrar
-        </button>
+        </SubmitButton>
       </form>
 
       <p className="mb-3 text-sm text-soft">

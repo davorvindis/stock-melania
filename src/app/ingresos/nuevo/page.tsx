@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getProducts, getLocations, getSuppliers } from "@/lib/queries";
@@ -117,9 +118,9 @@ export default async function NuevoIngreso({
             <textarea name="notas" rows={2} className={input} />
           </div>
 
-          <button type="submit" className={`${button} w-full sm:w-auto`}>
+          <SubmitButton className={`${button} w-full sm:w-auto`}>
             Confirmar ingreso
-          </button>
+          </SubmitButton>
         </form>
       </Card>
     </div>

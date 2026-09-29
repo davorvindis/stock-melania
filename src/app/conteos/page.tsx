@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getCounts, getLocations } from "@/lib/queries";
 import { abrirConteo } from "@/lib/actions";
@@ -47,9 +48,9 @@ export default async function Conteos({
             </select>
           </div>
           <div className="flex items-end">
-            <button type="submit" className={`${button} w-full`}>
+            <SubmitButton className={`${button} w-full`}>
               Abrir conteo
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </Card>

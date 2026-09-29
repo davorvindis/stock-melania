@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getSuppliers } from "@/lib/queries";
 import { crearProveedor } from "@/lib/actions";
@@ -35,9 +36,9 @@ export default async function Proveedores({
             <input type="text" name="contacto" className={input} />
           </div>
           <div className="sm:col-span-4">
-            <button type="submit" className={button}>
+            <SubmitButton className={button}>
               Crear proveedor
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </Card>

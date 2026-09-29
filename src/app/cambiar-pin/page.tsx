@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { SubmitButton } from "@/components/submit-button";
 import { cambiarPin } from "@/lib/auth-actions";
 import { Flash, input, label, button } from "@/components/ui";
 
@@ -47,9 +48,9 @@ export default async function CambiarPin({
                 className={`${input} text-center text-2xl tracking-[0.5em]`}
               />
             </div>
-            <button type="submit" className={`${button} w-full`}>
+            <SubmitButton className={`${button} w-full`}>
               Guardar PIN
-            </button>
+            </SubmitButton>
           </form>
         </div>
       </div>

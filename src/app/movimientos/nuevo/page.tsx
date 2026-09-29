@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getBalances, getLocations, isAvailable } from "@/lib/queries";
@@ -85,9 +86,9 @@ export default async function NuevoMovimiento({
             <textarea name="notas" rows={2} className={input} />
           </div>
 
-          <button type="submit" className={`${button} w-full sm:w-auto`}>
+          <SubmitButton className={`${button} w-full sm:w-auto`}>
             Confirmar movimiento
-          </button>
+          </SubmitButton>
         </form>
       </Card>
     </div>

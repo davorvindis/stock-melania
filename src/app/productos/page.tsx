@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getProducts } from "@/lib/queries";
 import { crearProducto } from "@/lib/actions";
@@ -68,9 +69,9 @@ export default async function Productos({
             <input type="number" name="stock_minimo" min="0" step="any" defaultValue="0" className={input} />
           </div>
           <div className="sm:col-span-6">
-            <button type="submit" className={button}>
+            <SubmitButton className={button}>
               Crear producto
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </Card>

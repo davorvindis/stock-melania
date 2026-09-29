@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection, SECTIONS, can, type Profile } from "@/lib/auth";
 import { crearUsuario, blanquearPin, actualizarUsuario } from "@/lib/auth-actions";
 import { db } from "@/lib/db";
@@ -57,9 +58,9 @@ export default async function Configuracion({
             </select>
           </div>
           <div className="sm:col-span-2">
-            <button type="submit" className={button}>
+            <SubmitButton className={button}>
               Crear usuario y generar PIN
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </Card>
@@ -117,19 +118,17 @@ export default async function Configuracion({
                 </div>
               </fieldset>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="submit"
+                <SubmitButton
                   className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper"
                 >
                   Guardar cambios
-                </button>
-                <button
-                  type="submit"
+                </SubmitButton>
+                <SubmitButton
                   formAction={blanquearPin}
                   className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush"
                 >
                   Blanquear PIN
-                </button>
+                </SubmitButton>
               </div>
             </form>
           </Card>

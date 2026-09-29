@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getCountDetail } from "@/lib/queries";
 import { guardarConteo, revisarConteo } from "@/lib/actions";
@@ -67,12 +68,12 @@ export default async function ConteoDetalle({
               ))}
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <button type="submit" className={`${button} bg-ink hover:bg-stone-700`}>
+              <SubmitButton className={`${button} bg-ink hover:bg-stone-700`}>
                 Guardar avance
-              </button>
-              <button type="submit" name="cerrar" value="1" className={button}>
+              </SubmitButton>
+              <SubmitButton name="cerrar" value="1" className={button}>
                 Cerrar conteo
-              </button>
+              </SubmitButton>
             </div>
             <p className="text-xs text-soft">
               Cerrar exige todas las líneas contadas y no permite modificaciones posteriores.
@@ -169,17 +170,16 @@ export default async function ConteoDetalle({
                   />
                 </div>
                 <div className="flex gap-2 sm:col-span-2">
-                  <button type="submit" name="decision" value="aprobar" className={button}>
+                  <SubmitButton name="decision" value="aprobar" className={button}>
                     Aprobar y ajustar stock
-                  </button>
-                  <button
-                    type="submit"
-                    name="decision"
+                  </SubmitButton>
+                  <SubmitButton
+                  name="decision"
                     value="rechazar"
                     className={`${button} bg-ink hover:bg-stone-700`}
                   >
                     Rechazar
-                  </button>
+                  </SubmitButton>
                 </div>
               </form>
             </Card>

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { SubmitButton } from "@/components/submit-button";
 import { login } from "@/lib/auth-actions";
 import { Flash, input, label, button } from "@/components/ui";
 
@@ -44,9 +45,9 @@ export default async function Login({
                 className={`${input} text-center text-2xl tracking-[0.5em]`}
               />
             </div>
-            <button type="submit" className={`${button} w-full`}>
+            <SubmitButton className={`${button} w-full`}>
               Entrar
-            </button>
+            </SubmitButton>
           </form>
           <p className="mt-4 text-center text-xs text-soft">
             ¿Sin PIN o bloqueada? Pedile a la administración que te lo blanquee.

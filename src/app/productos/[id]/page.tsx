@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { editarProducto } from "@/lib/actions";
@@ -113,9 +114,9 @@ export default async function EditarProducto({
             Los productos con historial no se borran: se desactivan y dejan de aparecer para operar.
           </p>
 
-          <button type="submit" className={button}>
+          <SubmitButton className={button}>
             Guardar cambios
-          </button>
+          </SubmitButton>
         </form>
       </Card>
     </div>
