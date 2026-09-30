@@ -178,7 +178,7 @@ const productoSchema = z.object({
   descripcion: z.string().trim().optional(),
   categoria: z.string().trim().optional(),
   unidad: z.string().trim().min(1, "Falta la unidad"),
-  tipo: z.enum(["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO"]),
+  tipo: z.enum(["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO", "KIT"]),
   stock_minimo: z.coerce.number().min(0).default(0),
 });
 
@@ -188,21 +188,28 @@ export async function crearProducto(formData: FormData) {
   const parsed = productoSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
-  const { error } = await db().from("products").insert({
-    sku: d.sku,
-    name: d.nombre,
-    description: d.descripcion || null,
-    category: d.categoria || null,
-    unit: d.unidad,
-    type: d.tipo,
-    min_stock: d.stock_minimo,
-  });
-  if (error) {
-    backWithError(back, error.code === "23505" ? `El SKU "${d.sku}" ya existe` : error.message);
+  const { data: creado, error } = await db()
+    .from("products")
+    .insert({
+      sku: d.sku,
+      name: d.nombre,
+      description: d.descripcion || null,
+      category: d.categoria || null,
+      unit: d.unidad,
+      type: d.tipo,
+      min_stock: d.stock_minimo,
+    })
+    .select("id")
+    .single();
+  if (error || !creado) {
+    backWithError(back, error?.code === "23505" ? `El SKU "${d.sku}" ya existe` : (error?.message ?? "Error al crear"));
   }
   await db().from("audit_logs").insert({
-    actor: user.alias, action: "product:create", entity: "products", detail: { sku: d.sku },
+    actor: user.alias, action: "product:create", entity: "products", entity_id: creado.id, detail: { sku: d.sku },
   });
+  if (d.tipo === "KIT") {
+    okRedirect(`/productos/${creado.id}`, `Kit ${d.sku} creado: ahora agregale los productos que lo componen ↓`);
+  }
   okRedirect("/productos", `Producto ${d.sku} creado`);
 }
 
