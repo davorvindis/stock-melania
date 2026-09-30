@@ -482,3 +482,40 @@ export async function ajustarStock(formData: FormData) {
   if (error) backWithError(back, error.message);
   okRedirect("/stock", "Stock ajustado (quedó registrado como movimiento de ajuste)");
 }
+
+// ── Eliminar producto (solo sin historial; con historial se desactiva) ──
+
+export async function eliminarProducto(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const id = uuid.safeParse(String(formData.get("producto") ?? ""));
+  if (!id.success) backWithError("/productos", "Producto inválido");
+  const back = `/productos/${id.data}`;
+  const cli = db();
+
+  const { data: prod } = await cli.from("products").select("sku, name").eq("id", id.data).maybeSingle();
+  if (!prod) backWithError("/productos", "Producto inexistente");
+
+  const refs = await Promise.all([
+    cli.from("inventory_movements").select("id", { count: "exact", head: true }).eq("product_id", id.data),
+    cli.from("stock_entry_lines").select("id", { count: "exact", head: true }).eq("product_id", id.data),
+    cli.from("inventory_count_lines").select("id", { count: "exact", head: true }).eq("product_id", id.data),
+  ]);
+  const historial = refs.reduce((s, r) => s + (r.count ?? 0), 0);
+  if (historial > 0) {
+    backWithError(
+      back,
+      `No se puede eliminar: tiene ${historial} registro(s) de historial. Desactivalo en su lugar (destildá "Activo" y guardá).`
+    );
+  }
+
+  const { error: lotErr } = await cli.from("lots").delete().eq("product_id", id.data);
+  if (lotErr) backWithError(back, "No se puede eliminar: sus lotes tienen historial. Desactivalo en su lugar.");
+  const { error } = await cli.from("products").delete().eq("id", id.data);
+  if (error) backWithError(back, error.message);
+
+  await cli.from("audit_logs").insert({
+    actor: user.alias, action: "product:delete", entity: "products", entity_id: id.data,
+    detail: { sku: prod.sku, name: prod.name },
+  });
+  okRedirect("/productos", `Producto ${prod.sku} eliminado`);
+}

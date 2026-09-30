@@ -1,7 +1,7 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { editarProducto } from "@/lib/actions";
+import { editarProducto, eliminarProducto } from "@/lib/actions";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -118,6 +118,23 @@ export default async function EditarProducto({
             Guardar cambios
           </SubmitButton>
         </form>
+      </Card>
+
+      <Card className="mt-4 border-red-200">
+        <details>
+          <summary className="cursor-pointer font-semibold text-red-800">Eliminar producto</summary>
+          <p className="mb-3 mt-2 text-sm text-soft">
+            Solo se puede eliminar un producto que nunca tuvo movimientos ni ingresos. Si tiene
+            historial, desactivalo (destildá &ldquo;Activo&rdquo; arriba): deja de aparecer para
+            operar pero su historia se conserva.
+          </p>
+          <form action={eliminarProducto}>
+            <input type="hidden" name="producto" value={p.id} />
+            <SubmitButton className="rounded-lg bg-red-700 px-6 py-3 text-base font-semibold text-white hover:bg-red-800">
+              Eliminar definitivamente
+            </SubmitButton>
+          </form>
+        </details>
       </Card>
     </div>
   );
