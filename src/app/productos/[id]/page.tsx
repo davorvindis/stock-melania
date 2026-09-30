@@ -1,7 +1,9 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { editarProducto, eliminarProducto } from "@/lib/actions";
+import { editarProducto, eliminarProducto, agregarComponenteKit, quitarComponenteKit } from "@/lib/actions";
+import { getKitComponents, getProducts } from "@/lib/queries";
+import { fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +15,7 @@ const TIPOS = [
   ["PACKAGING", "Packaging"],
   ["GRANEL", "Granel / materia prima"],
   ["ACCESORIO", "Accesorio"],
+  ["KIT", "Kit (combo: descuenta sus componentes)"],
 ] as const;
 
 export default async function EditarProducto({
@@ -26,6 +29,10 @@ export default async function EditarProducto({
   const { id } = await params;
   const { ok, error } = await searchParams;
   const { data: p } = await db().from("products").select("*").eq("id", id).maybeSingle();
+  const esKit = p?.type === "KIT";
+  const [componentes, todosProductos] = esKit
+    ? await Promise.all([getKitComponents(id), getProducts()])
+    : [[], []];
   if (!p) {
     return (
       <div>
@@ -119,6 +126,61 @@ export default async function EditarProducto({
           </SubmitButton>
         </form>
       </Card>
+
+      {esKit && (
+        <Card className="mt-4">
+          <h2 className="mb-1 font-semibold">Componentes del kit</h2>
+          <p className="mb-3 text-sm text-soft">
+            Al mover o vender este kit se descuentan estos productos automáticamente (cantidad por
+            cada kit). Los kits no tienen stock propio.
+          </p>
+          <div className="mb-4 space-y-2">
+            {componentes.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg border border-blush-100 p-3">
+                <span className="text-sm">
+                  <span className="font-medium">{fmtQty(c.quantity)}×</span> {c.component.name}{" "}
+                  <span className="text-soft">({c.component.sku})</span>
+                </span>
+                <form action={quitarComponenteKit}>
+                  <input type="hidden" name="componente_id" value={c.id} />
+                  <input type="hidden" name="kit" value={p.id} />
+                  <SubmitButton className="rounded-lg border border-line px-3 py-1.5 text-xs text-red-700 hover:bg-red-50">
+                    Quitar
+                  </SubmitButton>
+                </form>
+              </div>
+            ))}
+            {componentes.length === 0 && (
+              <p className="text-sm font-medium text-amber-700">
+                ⚠ Este kit no tiene componentes: no se va a poder mover hasta que agregues al menos uno.
+              </p>
+            )}
+          </div>
+          <form action={agregarComponenteKit} className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="kit" value={p.id} />
+            <div className="min-w-48 flex-1">
+              <label className={label}>Producto</label>
+              <select name="componente" required className={input}>
+                <option value="">Elegir…</option>
+                {todosProductos
+                  .filter((x) => x.active && x.type !== "KIT" && x.id !== p.id)
+                  .map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.sku} — {x.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className={label}>Cant. por kit</label>
+              <input type="number" name="cantidad" min="0.001" step="any" required className={`${input} w-28`} />
+            </div>
+            <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
+              Agregar
+            </SubmitButton>
+          </form>
+        </Card>
+      )}
 
       <Card className="mt-4 border-red-200">
         <details>

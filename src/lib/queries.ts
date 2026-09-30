@@ -245,3 +245,28 @@ export async function getDailyFlow(days = 14) {
   }
   return [...buckets.values()];
 }
+
+export async function getKits() {
+  const { data, error } = await db()
+    .from("products")
+    .select("id, sku, name")
+    .eq("type", "KIT")
+    .eq("active", true)
+    .order("name");
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function getKitComponents(kitId: string) {
+  const { data, error } = await db()
+    .from("kit_components")
+    .select("id, quantity, component:products!kit_components_component_id_fkey(id, sku, name, unit)")
+    .eq("kit_id", kitId)
+    .order("created_at");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as {
+    id: string;
+    quantity: number;
+    component: { id: string; sku: string; name: string; unit: string };
+  }[];
+}

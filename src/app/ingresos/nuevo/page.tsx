@@ -39,7 +39,7 @@ export default async function NuevoIngreso({
             <select name="producto" required className={input}>
               <option value="">Elegir producto…</option>
               {products
-                .filter((p) => p.active)
+                .filter((p) => p.active && p.type !== "KIT")
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.sku} — {p.name} ({p.unit})

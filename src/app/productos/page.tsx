@@ -15,6 +15,7 @@ const TIPOS = [
   ["PACKAGING", "Packaging"],
   ["GRANEL", "Granel / materia prima"],
   ["ACCESORIO", "Accesorio"],
+  ["KIT", "Kit (combo: descuenta sus componentes)"],
 ] as const;
 
 export default async function Productos({

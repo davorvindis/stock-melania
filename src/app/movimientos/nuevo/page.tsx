@@ -1,10 +1,11 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { randomUUID } from "crypto";
-import { getBalances, getLocations, isAvailable } from "@/lib/queries";
+import { getBalances, getLocations, getKits, isAvailable } from "@/lib/queries";
 import { registrarMovimiento } from "@/lib/actions";
 import { MOVEMENT_LABELS, OPERABLE_TYPES, fmtQty } from "@/lib/types";
-import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
+import { Card, Flash, PageTitle, input, label } from "@/components/ui";
+import { LineasMovimiento } from "@/components/lineas-movimiento";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,18 @@ export default async function NuevoMovimiento({
 }) {
   await requireSection("movimientos");
   const { ok, error } = await searchParams;
-  const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
+  const [balances, locations, kits] = await Promise.all([
+    getBalances(),
+    getLocations(),
+    getKits(),
+  ]);
+
+  const opciones = balances.map((b) => ({
+    value: `${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`,
+    label: `${b.product.name}${b.lot ? ` · lote ${b.lot.code}` : ""} · ${b.location.name} (${fmtQty(
+      b.quantity
+    )} ${b.product.unit})${!isAvailable(b) ? " ⚠ no disponible" : ""}`,
+  }));
 
   return (
     <div className="max-w-2xl">
@@ -40,23 +52,23 @@ export default async function NuevoMovimiento({
           </div>
 
           <div>
-            <label className={label}>Stock de origen *</label>
-            <select name="origen" required className={input}>
-              <option value="">Elegir producto / lote / ubicación…</option>
-              {balances.map((b) => (
-                <option key={b.id} value={`${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`}>
-                  {b.product.name}
-                  {b.lot ? ` · lote ${b.lot.code}` : ""} · {b.location.name} ({fmtQty(b.quantity)}{" "}
-                  {b.product.unit}){!isAvailable(b) ? " ⚠ no disponible" : ""}
-                </option>
-              ))}
-            </select>
+            <label className={label}>Productos *</label>
+            <LineasMovimiento opciones={opciones} kits={kits} ubicaciones={locations} />
+            <p className="mt-1 text-xs text-soft">
+              Los kits descuentan automáticamente todos sus componentes, usando primero los lotes
+              que vencen antes.
+            </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className={label}>Cantidad *</label>
-              <input type="number" name="cantidad" min="0.001" step="any" required className={input} />
+              <label className={label}>Motivo / N° de pedido</label>
+              <input
+                type="text"
+                name="motivo"
+                placeholder="ej. Pedido #1234, venta mostrador…"
+                className={input}
+              />
             </div>
             <div>
               <label className={label}>Ubicación destino</label>
@@ -72,21 +84,11 @@ export default async function NuevoMovimiento({
           </div>
 
           <div>
-            <label className={label}>Motivo</label>
-            <input
-              type="text"
-              name="motivo"
-              placeholder="ej. venta mostrador, rotura en depósito…"
-              className={input}
-            />
-          </div>
-
-          <div>
             <label className={label}>Observaciones</label>
             <textarea name="notas" rows={2} className={input} />
           </div>
 
-          <SubmitButton className={`${button} w-full sm:w-auto`}>
+          <SubmitButton className="w-full rounded-lg bg-rose-deep px-6 py-3 text-base font-semibold text-white hover:bg-rose-deeper sm:w-auto">
             Confirmar movimiento
           </SubmitButton>
         </form>

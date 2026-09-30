@@ -50,3 +50,9 @@
 - El actor de cada movimiento sale de la sesión (adiós campo "tu nombre").
 - Productos: edición completa (/productos/[id]) e importación masiva vía plantilla Excel con validación total antes de insertar (SKUs existentes se saltean).
 - Reemplaza el Basic Auth compartido. E2E Playwright: login DNI→cambio PIN→roles→bloqueos→relogin; import crea/saltea.
+
+## 2026-09-30 — Movimientos multi-producto + KITS
+
+- Nuevo movimiento acepta N líneas (productos y/o kits) en una sola operación atómica e idempotente (apply_movement_batch); campo "Motivo / N° de pedido" compartido.
+- KITS: tipo de producto KIT con componentes configurables (productos/[id]); al mover/vender un kit se descuentan sus componentes eligiendo lotes FEFO (vence antes, sale antes), partiendo entre lotes si hace falta. Kits sin stock propio (bloqueados en ingresos).
+- Verificado en transacción con rollback: FEFO, expansión 4×(2A+1B), idempotencia, insuficiencia con mensaje claro.

@@ -49,6 +49,11 @@ export async function registrarIngreso(formData: FormData) {
   if (costoTotal !== null && (isNaN(costoTotal) || costoTotal < 0)) backWithError(back, "Costo total inválido");
   if (costoUnitario !== null && (isNaN(costoUnitario) || costoUnitario < 0)) backWithError(back, "Costo unitario inválido");
 
+  const { data: prodTipo } = await db().from("products").select("type").eq("id", d.producto).maybeSingle();
+  if (prodTipo?.type === "KIT") {
+    backWithError(back, "Los kits no llevan stock propio: ingresá stock de sus componentes");
+  }
+
   const { error } = await db().rpc("create_stock_entry", {
     p_entry_date: d.fecha,
     p_supplier: d.proveedor || null,
@@ -75,45 +80,72 @@ export async function registrarIngreso(formData: FormData) {
 
 // ── Movimiento (transferencia / egreso) ─────────────────────────────
 
-const movimientoSchema = z.object({
+const movimientoCabeceraSchema = z.object({
   tipo: z.enum(OPERABLE_TYPES),
-  origen: z.string().min(1, "Elegí el stock de origen"), // "productId|lotId|locationId"
-  cantidad: numeroPositivo,
   destino: z.string().optional(),
   motivo: z.string().trim().optional(),
   notas: z.string().trim().optional(),
   idem: z.string().min(8),
 });
 
+// una operación puede tener varias líneas (productos o kits), todas atómicas
 export async function registrarMovimiento(formData: FormData) {
   const user = await requireSection("movimientos");
   const back = "/movimientos/nuevo";
-  const parsed = movimientoSchema.safeParse(Object.fromEntries(formData));
+  const parsed = movimientoCabeceraSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
 
-  const [productId, lotId, fromId] = d.origen.split("|");
-  if (!productId || !fromId) backWithError(back, "Origen inválido");
+  const valores = formData.getAll("linea_valor").map(String);
+  const cantidades = formData.getAll("linea_cantidad").map(String);
+  const ubicacionesKit = formData.getAll("linea_kit_ubicacion").map(String);
+
+  type Linea = {
+    product_id: string;
+    lot_id?: string | null;
+    from_location_id: string;
+    quantity: number;
+    is_kit?: boolean;
+  };
+  const lineas: Linea[] = [];
+  for (let i = 0; i < valores.length; i++) {
+    const valor = valores[i].trim();
+    if (!valor) continue;
+    const qty = Number(cantidades[i]);
+    if (isNaN(qty) || qty <= 0) backWithError(back, `Línea ${i + 1}: la cantidad debe ser mayor a 0`);
+    if (valor.startsWith("kit:")) {
+      const from = (ubicacionesKit[i] ?? "").trim();
+      if (!from) backWithError(back, `Línea ${i + 1}: elegí desde qué ubicación sale el kit`);
+      lineas.push({ product_id: valor.slice(4), is_kit: true, from_location_id: from, quantity: qty });
+    } else {
+      const [productId, lotId, fromId] = valor.split("|");
+      if (!productId || !fromId) backWithError(back, `Línea ${i + 1}: origen inválido`);
+      lineas.push({ product_id: productId, lot_id: lotId || null, from_location_id: fromId, quantity: qty });
+    }
+  }
+  if (lineas.length === 0) backWithError(back, "Agregá al menos un producto");
 
   const needsDest = NEEDS_DESTINATION.includes(d.tipo);
   if (needsDest && !d.destino) backWithError(back, "Este tipo de movimiento necesita ubicación destino");
-  if (needsDest && d.destino === fromId) backWithError(back, "Origen y destino no pueden ser iguales");
+  if (needsDest && lineas.some((l) => l.from_location_id === d.destino)) {
+    backWithError(back, "Origen y destino no pueden ser iguales");
+  }
   if (d.tipo === "OTHER" && !d.motivo) backWithError(back, "El tipo 'Otro' exige un motivo");
 
-  const { error } = await db().rpc("apply_movement", {
+  const { error } = await db().rpc("apply_movement_batch", {
     p_type: d.tipo,
-    p_product: productId,
-    p_lot: lotId || null,
-    p_quantity: d.cantidad,
-    p_from: fromId,
     p_to: needsDest ? d.destino : null,
     p_actor: user.alias,
     p_reason: d.motivo || null,
     p_notes: d.notas || null,
     p_idem: d.idem,
+    p_lines: lineas,
   });
   if (error) backWithError(back, error.message);
-  okRedirect("/movimientos", "Movimiento registrado");
+  okRedirect(
+    "/movimientos",
+    lineas.length > 1 ? `Movimiento registrado (${lineas.length} líneas)` : "Movimiento registrado"
+  );
 }
 
 // ── Reversión (solo admin/manager) ──────────────────────────────────
@@ -651,4 +683,50 @@ export async function eliminarProveedor(formData: FormData) {
     actor: user.alias, action: "supplier:delete", entity: "suppliers", entity_id: id.data,
   });
   okRedirect("/proveedores", "Proveedor eliminado");
+}
+
+// ── Componentes de kit ──────────────────────────────────────────────
+
+const componenteSchema = z.object({
+  kit: uuid,
+  componente: uuid,
+  cantidad: numeroPositivo,
+});
+
+export async function agregarComponenteKit(formData: FormData) {
+  const user = await requireSection("productos");
+  const parsed = componenteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = `/productos/${d.kit}`;
+  const { data: comp } = await db().from("products").select("type, name").eq("id", d.componente).maybeSingle();
+  if (!comp) backWithError(back, "Componente inexistente");
+  if (comp.type === "KIT") backWithError(back, "Un kit no puede contener otro kit");
+  const { error } = await db().from("kit_components").insert({
+    kit_id: d.kit,
+    component_id: d.componente,
+    quantity: d.cantidad,
+  });
+  if (error) {
+    backWithError(back, error.code === "23505" ? `${comp.name} ya es parte del kit` : error.message);
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "kit:add_component", entity: "products", entity_id: d.kit,
+    detail: { componente: comp.name, cantidad: d.cantidad },
+  });
+  okRedirect(back, "Componente agregado al kit");
+}
+
+export async function quitarComponenteKit(formData: FormData) {
+  const user = await requireSection("productos");
+  const id = uuid.safeParse(String(formData.get("componente_id") ?? ""));
+  const kit = String(formData.get("kit") ?? "");
+  if (!id.success) backWithError("/productos", "Componente inválido");
+  const back = `/productos/${kit}`;
+  const { error } = await db().from("kit_components").delete().eq("id", id.data);
+  if (error) backWithError(back, error.message);
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "kit:remove_component", entity: "products", entity_id: kit || null,
+  });
+  okRedirect(back, "Componente quitado del kit");
 }
