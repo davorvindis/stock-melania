@@ -27,6 +27,7 @@ npm run dev
 
 ## Documentación
 
+- `docs/DESARROLLO.md` — **onboarding para desarrollar** (empezá por acá)
 - `docs/ARCHITECTURE.md` — arquitectura y decisiones
 - `docs/DATABASE.md` — modelo de datos, migrations
 - `docs/OPERATIONS.md` — operatoria: usuarios, roles, ubicaciones, deploy, rollback
