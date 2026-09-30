@@ -1,9 +1,50 @@
 import { requireSection } from "@/lib/auth";
 import { getBalances, getLocations, isAvailable, type BalanceRow } from "@/lib/queries";
+import { ajustarStock } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
-import { Card, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
+import { Card, Flash, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
 
 export const dynamic = "force-dynamic";
+
+// ajuste directo: fija la cantidad real; la diferencia queda como movimiento de ajuste
+function AjusteForm({ b, compact = false }: { b: BalanceRow; compact?: boolean }) {
+  return (
+    <details className={compact ? "mt-2" : ""}>
+      <summary className="cursor-pointer py-1 text-xs font-medium text-rose-deep hover:underline">
+        Ajustar
+      </summary>
+      <form
+        action={ajustarStock}
+        className={compact ? "mt-2 space-y-2" : "mt-2 flex flex-wrap items-center gap-2"}
+      >
+        <input type="hidden" name="renglon" value={`${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`} />
+        <input
+          type="number"
+          name="cantidad_nueva"
+          min="0"
+          step="any"
+          defaultValue={Number(b.quantity)}
+          required
+          aria-label="Cantidad real"
+          className={`rounded-lg border border-line px-3 py-2 text-sm ${compact ? "w-full" : "w-24"}`}
+        />
+        <input
+          type="text"
+          name="motivo"
+          placeholder="Motivo del ajuste"
+          required
+          className={`rounded-lg border border-line px-3 py-2 text-sm ${compact ? "w-full" : "w-44"}`}
+        />
+        <SubmitButton
+          className={`rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white ${compact ? "w-full" : ""}`}
+        >
+          Confirmar
+        </SubmitButton>
+      </form>
+    </details>
+  );
+}
 
 function LotBadge({ b }: { b: BalanceRow }) {
   if (!b.lot) return <span>—</span>;
@@ -19,6 +60,8 @@ function LotBadge({ b }: { b: BalanceRow }) {
 }
 
 type SP = {
+  ok?: string;
+  error?: string;
   q?: string;
   ubicacion?: string;
   disp?: string;
@@ -27,7 +70,8 @@ type SP = {
 };
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<SP> }) {
-  await requireSection("stock");
+  const user = await requireSection("stock");
+  const puedeAjustar = user.role === "ADMIN" || user.role === "MANAGER";
   const sp = await searchParams;
   const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
 
@@ -110,6 +154,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         </div>
       </form>
 
+      <Flash ok={sp.ok} error={sp.error} />
       <p className="mb-3 text-sm text-soft">
         {rows.length} renglón(es) · {fmtQty(total)} unidades
       </p>
@@ -142,6 +187,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                 {isAvailable(b) ? "Disponible" : "No disponible"}
               </span>
             </div>
+            {puedeAjustar && <AjusteForm b={b} compact />}
           </div>
         ))}
         {rows.length === 0 && (
@@ -165,6 +211,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                 <SortTh col="ubicacion" sp={sp} path="/stock">Ubicación</SortTh>
                 <SortTh col="cantidad" sp={sp} path="/stock">Cantidad</SortTh>
                 <th className={th}>Disponible</th>
+                {puedeAjustar && <th className={th}></th>}
               </tr>
             </thead>
             <tbody>
@@ -187,11 +234,16 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     {fmtQty(b.quantity)} <span className="text-xs text-soft">{b.product.unit}</span>
                   </td>
                   <td className={td}>{isAvailable(b) ? "Sí" : "No"}</td>
+                  {puedeAjustar && (
+                    <td className={td}>
+                      <AjusteForm b={b} />
+                    </td>
+                  )}
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td className={td} colSpan={8}>
+                  <td className={td} colSpan={puedeAjustar ? 9 : 8}>
                     Nada coincide con la búsqueda o filtros.
                   </td>
                 </tr>

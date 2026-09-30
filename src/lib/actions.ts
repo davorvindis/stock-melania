@@ -454,3 +454,31 @@ export async function importarProductos(formData: FormData) {
     }${salteados > 0 ? `, ${salteados} salteado(s) por SKU existente` : ""}.`
   );
 }
+
+// ── Ajuste directo de stock (ADMIN/MANAGER) ─────────────────────────
+
+const ajusteSchema = z.object({
+  renglon: z.string().min(1), // "productId|lotId|locationId"
+  cantidad_nueva: z.coerce.number().min(0, "La cantidad debe ser 0 o mayor"),
+  motivo: z.string().trim().min(3, "Indicá el motivo del ajuste"),
+});
+
+export async function ajustarStock(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const back = "/stock";
+  const parsed = ajusteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+  const [productId, lotId, locationId] = d.renglon.split("|");
+  if (!productId || !locationId) backWithError(back, "Renglón inválido");
+  const { error } = await db().rpc("adjust_stock_to", {
+    p_product: productId,
+    p_lot: lotId || null,
+    p_location: locationId,
+    p_new: d.cantidad_nueva,
+    p_actor: user.alias,
+    p_reason: d.motivo,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect("/stock", "Stock ajustado (quedó registrado como movimiento de ajuste)");
+}
