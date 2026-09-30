@@ -519,3 +519,136 @@ export async function eliminarProducto(formData: FormData) {
   });
   okRedirect("/productos", `Producto ${prod.sku} eliminado`);
 }
+
+// ── Ubicaciones ─────────────────────────────────────────────────────
+
+const ubicacionSchema = z.object({
+  nombre: z.string().trim().min(1, "Falta el nombre"),
+  es_cuarentena: z.string().optional(),
+});
+
+export async function crearUbicacion(formData: FormData) {
+  await requireSection("ubicaciones");
+  const back = "/ubicaciones";
+  const parsed = ubicacionSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+  const { error } = await db().from("locations").insert({
+    name: d.nombre,
+    is_quarantine: d.es_cuarentena === "on",
+  });
+  if (error) {
+    backWithError(back, error.code === "23505" ? `La ubicación "${d.nombre}" ya existe` : error.message);
+  }
+  okRedirect(back, `Ubicación ${d.nombre} creada`);
+}
+
+export async function editarUbicacion(formData: FormData) {
+  const user = await requireSection("ubicaciones");
+  const back = "/ubicaciones";
+  const id = uuid.safeParse(String(formData.get("ubicacion") ?? ""));
+  const parsed = ubicacionSchema.safeParse(Object.fromEntries(formData));
+  if (!id.success || !parsed.success) backWithError(back, "Datos inválidos");
+  const d = parsed.data;
+  const { error } = await db()
+    .from("locations")
+    .update({ name: d.nombre, is_quarantine: d.es_cuarentena === "on", active: formData.get("activo") === "on" })
+    .eq("id", id.data);
+  if (error) {
+    backWithError(back, error.code === "23505" ? `La ubicación "${d.nombre}" ya existe` : error.message);
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "location:update", entity: "locations", entity_id: id.data,
+    detail: { name: d.nombre },
+  });
+  okRedirect(back, "Ubicación actualizada");
+}
+
+export async function eliminarUbicacion(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const back = "/ubicaciones";
+  const id = uuid.safeParse(String(formData.get("ubicacion") ?? ""));
+  if (!id.success) backWithError(back, "Ubicación inválida");
+  const cli = db();
+  const refs = await Promise.all([
+    cli.from("inventory_movements").select("id", { count: "exact", head: true }).eq("from_location_id", id.data),
+    cli.from("inventory_movements").select("id", { count: "exact", head: true }).eq("to_location_id", id.data),
+    cli.from("stock_balances").select("id", { count: "exact", head: true }).eq("location_id", id.data),
+    cli.from("stock_entry_lines").select("id", { count: "exact", head: true }).eq("location_id", id.data),
+    cli.from("inventory_counts").select("id", { count: "exact", head: true }).eq("location_id", id.data),
+  ]);
+  const historial = refs.reduce((s, r) => s + (r.count ?? 0), 0);
+  if (historial > 0) {
+    backWithError(back, `No se puede eliminar: tiene ${historial} registro(s) de historial. Desactivala en su lugar.`);
+  }
+  const { error } = await cli.from("locations").delete().eq("id", id.data);
+  if (error) backWithError(back, error.message);
+  await cli.from("audit_logs").insert({
+    actor: user.alias, action: "location:delete", entity: "locations", entity_id: id.data,
+  });
+  okRedirect(back, "Ubicación eliminada");
+}
+
+// ── Proveedores: edición y eliminación ──────────────────────────────
+
+const editarProveedorSchema = z.object({
+  proveedor: uuid,
+  nombre: z.string().trim().min(1, "Falta el nombre"),
+  razon_social: z.string().trim().optional(),
+  cuit: z.string().trim().optional(),
+  contacto: z.string().trim().optional(),
+  email: z.string().trim().optional(),
+  telefono: z.string().trim().optional(),
+  notas: z.string().trim().optional(),
+  activo: z.string().optional(),
+});
+
+export async function editarProveedor(formData: FormData) {
+  const user = await requireSection("proveedores");
+  const parsed = editarProveedorSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/proveedores", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = `/proveedores/${d.proveedor}`;
+  const { error } = await db()
+    .from("suppliers")
+    .update({
+      name: d.nombre,
+      legal_name: d.razon_social || null,
+      cuit: d.cuit || null,
+      contact: d.contacto || null,
+      email: d.email || null,
+      phone: d.telefono || null,
+      notes: d.notas || null,
+      active: d.activo === "on",
+    })
+    .eq("id", d.proveedor);
+  if (error) {
+    backWithError(back, error.code === "23505" ? `El proveedor "${d.nombre}" ya existe` : error.message);
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "supplier:update", entity: "suppliers", entity_id: d.proveedor,
+    detail: { name: d.nombre },
+  });
+  okRedirect(back, "Proveedor actualizado");
+}
+
+export async function eliminarProveedor(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const id = uuid.safeParse(String(formData.get("proveedor") ?? ""));
+  if (!id.success) backWithError("/proveedores", "Proveedor inválido");
+  const back = `/proveedores/${id.data}`;
+  const cli = db();
+  const { count } = await cli
+    .from("stock_entries")
+    .select("id", { count: "exact", head: true })
+    .eq("supplier_id", id.data);
+  if ((count ?? 0) > 0) {
+    backWithError(back, `No se puede eliminar: tiene ${count} ingreso(s) asociados. Desactivalo en su lugar.`);
+  }
+  const { error } = await cli.from("suppliers").delete().eq("id", id.data);
+  if (error) backWithError(back, error.message);
+  await cli.from("audit_logs").insert({
+    actor: user.alias, action: "supplier:delete", entity: "suppliers", entity_id: id.data,
+  });
+  okRedirect("/proveedores", "Proveedor eliminado");
+}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getSuppliers } from "@/lib/queries";
@@ -45,17 +46,15 @@ export default async function Proveedores({
 
       <div className="space-y-2 md:hidden">
         {suppliers.map((s) => (
-          <div key={s.id} className="rounded-lg border border-blush-100 bg-white p-3">
+          <Link key={s.id} href={`/proveedores/${s.id}`} className="block rounded-lg border border-blush-100 bg-white p-3 hover:border-blush">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">{s.name}</span>
               <span className="text-xs text-soft">{s.active ? "Activo" : "Inactivo"}</span>
             </div>
-            {(s.cuit || s.contact) && (
-              <div className="mt-1 text-xs text-soft">
-                {[s.cuit, s.contact].filter(Boolean).join(" · ")}
-              </div>
-            )}
-          </div>
+            <div className="mt-1 text-xs text-soft">
+              {[s.cuit, s.contact].filter(Boolean).join(" · ") || "Tocá para editar"}
+            </div>
+          </Link>
         ))}
       </div>
 
@@ -67,6 +66,7 @@ export default async function Proveedores({
               <th className={th}>CUIT</th>
               <th className={th}>Contacto</th>
               <th className={th}>Estado</th>
+              <th className={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -76,6 +76,11 @@ export default async function Proveedores({
                 <td className={td}>{s.cuit ?? "—"}</td>
                 <td className={td}>{s.contact ?? "—"}</td>
                 <td className={td}>{s.active ? "Activo" : "Inactivo"}</td>
+                <td className={td}>
+                  <Link href={`/proveedores/${s.id}`} className="text-xs font-medium text-rose-deep hover:underline">
+                    Editar
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>

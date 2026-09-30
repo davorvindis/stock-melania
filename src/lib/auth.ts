@@ -27,6 +27,7 @@ export const SECTIONS: readonly { key: string; label: string }[] = [
   { key: "conteos", label: "Conteos" },
   { key: "productos", label: "Productos" },
   { key: "proveedores", label: "Proveedores" },
+  { key: "ubicaciones", label: "Ubicaciones" },
   { key: "auditoria", label: "Auditoría" },
   { key: "configuracion", label: "Configuración" },
 ];
@@ -34,15 +35,15 @@ export const SECTIONS: readonly { key: string; label: string }[] = [
 const ROLE_DEFAULTS: Record<Role, Record<string, boolean>> = {
   ADMIN: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
-    productos: true, proveedores: true, auditoria: true, configuracion: true,
+    productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: true,
   },
   MANAGER: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
-    productos: true, proveedores: true, auditoria: true, configuracion: false,
+    productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: false,
   },
   OPERATOR: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
-    productos: true, proveedores: true, auditoria: false, configuracion: false,
+    productos: true, proveedores: true, ubicaciones: false, auditoria: false, configuracion: false,
   },
 };
 
