@@ -18,6 +18,8 @@ export const MOVEMENT_LABELS: Record<string, string> = {
   SUPPLIER_SEND: "Envío a proveedor",
   SUPPLIER_RETURN: "Vuelta de proveedor",
   COUNT_ADJUSTMENT: "Ajuste por conteo",
+  KIT_ASSEMBLY: "Armado de kit",
+  KIT_DISASSEMBLY: "Desarmado de kit",
   REVERSAL: "Reversión",
   OTHER: "Otro",
 };

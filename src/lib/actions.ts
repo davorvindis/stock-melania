@@ -737,3 +737,46 @@ export async function quitarComponenteKit(formData: FormData) {
   });
   okRedirect(back, "Componente quitado del kit");
 }
+
+// ── Armado / desarmado de kits ──────────────────────────────────────
+
+const armadoSchema = z.object({
+  kit: uuid,
+  cantidad: numeroPositivo,
+  ubicacion: uuid,
+  idem: z.string().min(8),
+});
+
+export async function armarKits(formData: FormData) {
+  const user = await requireSection("movimientos");
+  const parsed = armadoSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = `/productos/${d.kit}`;
+  const { error } = await db().rpc("assemble_kits", {
+    p_kit: d.kit,
+    p_qty: d.cantidad,
+    p_location: d.ubicacion,
+    p_actor: user.alias,
+    p_idem: d.idem,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, `${d.cantidad} kit(s) armado(s): componentes descontados y kits sumados al stock`);
+}
+
+export async function desarmarKits(formData: FormData) {
+  const user = await requireSection("movimientos");
+  const parsed = armadoSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
+  const d = parsed.data;
+  const back = `/productos/${d.kit}`;
+  const { error } = await db().rpc("disassemble_kits", {
+    p_kit: d.kit,
+    p_qty: d.cantidad,
+    p_location: d.ubicacion,
+    p_actor: user.alias,
+    p_idem: d.idem,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, `${d.cantidad} kit(s) desarmado(s): componentes devueltos al stock`);
+}

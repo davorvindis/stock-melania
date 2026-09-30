@@ -1,8 +1,9 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { editarProducto, eliminarProducto, agregarComponenteKit, quitarComponenteKit } from "@/lib/actions";
-import { getKitComponents, getProducts } from "@/lib/queries";
+import { editarProducto, eliminarProducto, agregarComponenteKit, quitarComponenteKit, armarKits, desarmarKits } from "@/lib/actions";
+import { getKitComponents, getProducts, getBalances, getLocations } from "@/lib/queries";
+import { randomUUID } from "crypto";
 import { fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
@@ -30,9 +31,10 @@ export default async function EditarProducto({
   const { ok, error } = await searchParams;
   const { data: p } = await db().from("products").select("*").eq("id", id).maybeSingle();
   const esKit = p?.type === "KIT";
-  const [componentes, todosProductos] = esKit
-    ? await Promise.all([getKitComponents(id), getProducts()])
-    : [[], []];
+  const [componentes, todosProductos, balances, ubicaciones] = esKit
+    ? await Promise.all([getKitComponents(id), getProducts(), getBalances(), getLocations()])
+    : [[], [], [], []];
+  const stockKit = balances.filter((b) => b.product.id === id);
   if (!p) {
     return (
       <div>
@@ -131,8 +133,8 @@ export default async function EditarProducto({
         <Card className="mt-4">
           <h2 className="mb-1 font-semibold">Componentes del kit</h2>
           <p className="mb-3 text-sm text-soft">
-            Al mover o vender este kit se descuentan estos productos automáticamente (cantidad por
-            cada kit). Los kits no tienen stock propio.
+            Cantidades por cada kit. Al armar kits se descuentan estos componentes y el kit suma
+            stock propio, listo para vender.
           </p>
           <div className="mb-4 space-y-2">
             {componentes.map((c) => (
@@ -177,6 +179,53 @@ export default async function EditarProducto({
             </div>
             <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
               Agregar
+            </SubmitButton>
+          </form>
+        </Card>
+      )}
+
+      {esKit && componentes.length > 0 && (
+        <Card className="mt-4">
+          <h2 className="mb-1 font-semibold">Armar / desarmar kits</h2>
+          <p className="mb-3 text-sm text-soft">
+            Armar descuenta los componentes (primero los lotes que vencen antes) y suma kits al
+            stock de la ubicación. Desarmar devuelve los componentes.
+          </p>
+          {stockKit.length > 0 && (
+            <p className="mb-3 text-sm">
+              Kits armados:{" "}
+              {stockKit.map((b) => `${fmtQty(b.quantity)} en ${b.location.name}`).join(" · ")}
+            </p>
+          )}
+          <form className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="kit" value={p.id} />
+            <input type="hidden" name="idem" value={randomUUID()} />
+            <div>
+              <label className={label}>Cantidad</label>
+              <input type="number" name="cantidad" min="1" step="any" required className={`${input} w-28`} />
+            </div>
+            <div className="min-w-40">
+              <label className={label}>Ubicación</label>
+              <select name="ubicacion" required className={input}>
+                <option value="">Elegir…</option>
+                {ubicaciones.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <SubmitButton
+              formAction={armarKits}
+              className="rounded-lg bg-rose-deep px-5 py-2.5 font-semibold text-white hover:bg-rose-deeper"
+            >
+              Armar
+            </SubmitButton>
+            <SubmitButton
+              formAction={desarmarKits}
+              className="rounded-lg border border-line px-5 py-2.5 font-medium text-rose-deep hover:border-blush"
+            >
+              Desarmar
             </SubmitButton>
           </form>
         </Card>

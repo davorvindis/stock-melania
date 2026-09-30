@@ -1,7 +1,7 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { randomUUID } from "crypto";
-import { getBalances, getLocations, getKits, isAvailable } from "@/lib/queries";
+import { getBalances, getLocations, isAvailable } from "@/lib/queries";
 import { registrarMovimiento } from "@/lib/actions";
 import { MOVEMENT_LABELS, OPERABLE_TYPES, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label } from "@/components/ui";
@@ -16,11 +16,7 @@ export default async function NuevoMovimiento({
 }) {
   await requireSection("movimientos");
   const { ok, error } = await searchParams;
-  const [balances, locations, kits] = await Promise.all([
-    getBalances(),
-    getLocations(),
-    getKits(),
-  ]);
+  const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
 
   const opciones = balances.map((b) => ({
     value: `${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`,
@@ -53,10 +49,10 @@ export default async function NuevoMovimiento({
 
           <div>
             <label className={label}>Productos *</label>
-            <LineasMovimiento opciones={opciones} kits={kits} ubicaciones={locations} />
+            <LineasMovimiento opciones={opciones} kits={[]} ubicaciones={locations} />
             <p className="mt-1 text-xs text-soft">
-              Los kits descuentan automáticamente todos sus componentes, usando primero los lotes
-              que vencen antes.
+              Los kits armados aparecen acá como cualquier producto con stock. Se arman desde su
+              página en Productos.
             </p>
           </div>
 
