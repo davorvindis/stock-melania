@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "./db";
-import { requireSection, requireRole } from "./auth";
+import { requireSection, requireRole, can } from "./auth";
 import { NEEDS_DESTINATION, OPERABLE_TYPES } from "./types";
 
 function backWithError(path: string, message: string): never {
@@ -182,12 +182,38 @@ const productoSchema = z.object({
   stock_minimo: z.coerce.number().min(0).default(0),
 });
 
+const stockInicialSchema = z.object({
+  cantidad_inicial: z.coerce.number().min(0, "La cantidad inicial no puede ser negativa").default(0),
+  ubicacion_inicial: z.string().optional(),
+  lote_inicial: z.string().trim().optional(),
+  vencimiento_inicial: z.string().optional(),
+  idem: z.string().min(8).optional(),
+});
+
 export async function crearProducto(formData: FormData) {
   const user = await requireSection("productos");
   const back = "/productos";
   const parsed = productoSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
+  const ini = stockInicialSchema.safeParse({
+    cantidad_inicial: formData.get("cantidad_inicial") || 0,
+    ubicacion_inicial: formData.get("ubicacion_inicial") || undefined,
+    lote_inicial: formData.get("lote_inicial") || undefined,
+    vencimiento_inicial: formData.get("vencimiento_inicial") || undefined,
+    idem: formData.get("idem") || undefined,
+  });
+  if (!ini.success) backWithError(back, ini.error.issues[0].message);
+  const cargaInicial = ini.data.cantidad_inicial > 0;
+  if (cargaInicial) {
+    if (d.tipo === "KIT") {
+      backWithError(back, "Los kits no se cargan con cantidad inicial: usá \"Armar kit\" y cargá los kits ya armados ahí");
+    }
+    if (!can(user, "ingresos")) backWithError(back, "No tenés permiso para cargar ingresos de stock");
+    if (!uuid.safeParse(ini.data.ubicacion_inicial).success) {
+      backWithError(back, "Elegí en qué ubicación entra la cantidad inicial");
+    }
+  }
   const { data: creado, error } = await db()
     .from("products")
     .insert({
@@ -209,6 +235,32 @@ export async function crearProducto(formData: FormData) {
   });
   if (d.tipo === "KIT") {
     okRedirect(`/productos/${creado.id}`, `Kit ${d.sku} creado: ahora agregale los productos que lo componen ↓`);
+  }
+  if (cargaInicial) {
+    const { error: errIngreso } = await db().rpc("create_stock_entry", {
+      p_entry_date: new Date().toISOString().slice(0, 10),
+      p_supplier: null,
+      p_remito: null,
+      p_invoice: null,
+      p_notes: "Stock inicial al crear el producto",
+      p_actor: user.alias,
+      p_idem: ini.data.idem ?? `alta:${creado.id}`,
+      p_lines: [
+        {
+          product_id: creado.id,
+          lot_code: ini.data.lote_inicial || null,
+          expires_on: ini.data.vencimiento_inicial || null,
+          quantity: ini.data.cantidad_inicial,
+          unit_cost: null,
+          total_cost: null,
+          location_id: ini.data.ubicacion_inicial,
+        },
+      ],
+    });
+    if (errIngreso) {
+      backWithError(back, `Producto ${d.sku} creado, pero falló la carga del stock inicial: ${errIngreso.message}`);
+    }
+    okRedirect("/productos", `Producto ${d.sku} creado con ${ini.data.cantidad_inicial} unidad(es) en stock`);
   }
   okRedirect("/productos", `Producto ${d.sku} creado`);
 }
@@ -508,7 +560,8 @@ export async function ajustarStock(formData: FormData) {
   const parsed = ajusteSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
-  const [productId, lotId, locationId] = d.renglon.split("|");
+  const [productId, lotId, locationFila] = d.renglon.split("|");
+  const locationId = locationFila || String(formData.get("ubicacion") ?? "");
   if (!productId || !locationId) backWithError(back, "Renglón inválido");
   const { error } = await db().rpc("adjust_stock_to", {
     p_product: productId,
@@ -741,6 +794,12 @@ export async function crearKit(formData: FormData) {
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
   const { comps, nombres } = await leerComposicion(formData, back);
+  const armados = Number(formData.get("armados") || 0);
+  const ubicArmados = uuid.safeParse(String(formData.get("ubicacion_armados") ?? ""));
+  if (armados > 0) {
+    if (!can(user, "movimientos")) backWithError(back, "No tenés permiso para armar kits");
+    if (!ubicArmados.success) backWithError(back, "Elegí en qué ubicación quedan los kits armados");
+  }
 
   const { data: creado, error } = await db()
     .from("products")
@@ -769,6 +828,18 @@ export async function crearKit(formData: FormData) {
     actor: user.alias, action: "product:create", entity: "products", entity_id: creado.id,
     detail: { sku: d.sku, kit: comps.map((c) => ({ componente: nombres.get(c.component_id), cantidad: c.quantity })) },
   });
+  if (armados > 0 && ubicArmados.success) {
+    const fichaKit = `/productos/${creado.id}`;
+    const { error: errArmado } = await db().rpc("assemble_kits", {
+      p_kit: creado.id,
+      p_qty: armados,
+      p_location: ubicArmados.data,
+      p_actor: user.alias,
+      p_idem: String(formData.get("idem") || `alta-kit:${creado.id}`),
+    });
+    if (errArmado) backWithError(fichaKit, `Kit ${d.sku} creado, pero no se pudo armar: ${errArmado.message}`);
+    okRedirect(fichaKit, `Kit ${d.sku} creado y ${armados} armado(s): componentes descontados del stock`);
+  }
   okRedirect(`/productos/${creado.id}`, `Kit ${d.sku} creado con ${comps.length} producto(s)`);
 }
 

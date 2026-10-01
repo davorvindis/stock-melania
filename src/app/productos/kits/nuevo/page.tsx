@@ -2,7 +2,8 @@ import Link from "next/link";
 import { SubmitButton } from "@/components/submit-button";
 import { KitBuilder } from "@/components/kit-builder";
 import { requireSection } from "@/lib/auth";
-import { getProducts } from "@/lib/queries";
+import { getProducts, getLocations } from "@/lib/queries";
+import { randomUUID } from "crypto";
 import { crearKit } from "@/lib/actions";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
@@ -15,7 +16,8 @@ export default async function NuevoKit({
 }) {
   await requireSection("productos");
   const { ok, error } = await searchParams;
-  const productos = (await getProducts()).filter((p) => p.active && p.type !== "KIT");
+  const [todos, ubicaciones] = await Promise.all([getProducts(), getLocations()]);
+  const productos = todos.filter((p) => p.active && p.type !== "KIT");
 
   return (
     <div className="max-w-5xl">
@@ -51,10 +53,36 @@ export default async function NuevoKit({
 
         <KitBuilder productos={productos} />
 
+        <Card>
+          <h3 className="mb-1 font-semibold">¿Ya tenés kits armados? (opcional)</h3>
+          <p className="mb-3 text-sm text-soft">
+            Se suman al stock del kit y se descuentan sus componentes de esa ubicación (primero los
+            lotes que vencen antes).
+          </p>
+          <input type="hidden" name="idem" value={randomUUID()} />
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className={label}>Kits armados</label>
+              <input type="number" name="armados" min="0" step="any" placeholder="0" className={`${input} w-32`} />
+            </div>
+            <div className="min-w-48">
+              <label className={label}>Ubicación</label>
+              <select name="ubicacion_armados" className={input}>
+                <option value="">Elegir…</option>
+                {ubicaciones.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </Card>
+
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton className={button}>Crear kit</SubmitButton>
           <span className="text-sm text-soft">
-            Las cantidades son por cada kit. Después lo armás físicamente desde la ficha del kit.
+            Las cantidades del contenido son por cada kit.
           </span>
         </div>
       </form>

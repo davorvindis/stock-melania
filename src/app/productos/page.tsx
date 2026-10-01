@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
-import { getProducts } from "@/lib/queries";
+import { getProducts, getLocations } from "@/lib/queries";
+import { randomUUID } from "crypto";
 import { crearProducto } from "@/lib/actions";
 import { fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
@@ -25,7 +26,7 @@ export default async function Productos({
 }) {
   await requireSection("productos");
   const { ok, error } = await searchParams;
-  const products = await getProducts();
+  const [products, ubicaciones] = await Promise.all([getProducts(), getLocations()]);
 
   return (
     <div>
@@ -77,6 +78,41 @@ export default async function Productos({
             <label className={label}>Stock mínimo</label>
             <input type="number" name="stock_minimo" min="0" step="any" defaultValue="0" className={input} />
           </div>
+          <details className="rounded-lg border border-blush-100 bg-blush-50/60 p-3 sm:col-span-6">
+            <summary className="cursor-pointer text-sm font-medium text-rose-deep">
+              + Cargar stock inicial (opcional)
+            </summary>
+            <input type="hidden" name="idem" value={randomUUID()} />
+            <p className="mt-2 text-xs text-soft">
+              Las unidades que ya tenés quedan registradas como ingreso. No aplica a kits: esos se
+              arman desde &ldquo;Armar kit&rdquo;.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-4">
+              <div>
+                <label className={label}>Cantidad</label>
+                <input type="number" name="cantidad_inicial" min="0" step="any" placeholder="0" className={input} />
+              </div>
+              <div>
+                <label className={label}>Ubicación</label>
+                <select name="ubicacion_inicial" className={input}>
+                  <option value="">Elegir…</option>
+                  {ubicaciones.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={label}>N° de lote</label>
+                <input type="text" name="lote_inicial" className={input} />
+              </div>
+              <div>
+                <label className={label}>Vencimiento</label>
+                <input type="date" name="vencimiento_inicial" className={input} />
+              </div>
+            </div>
+          </details>
           <div className="sm:col-span-6">
             <SubmitButton className={button}>
               Crear producto

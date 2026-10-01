@@ -1,5 +1,6 @@
 import { requireSection } from "@/lib/auth";
-import { getBalances, getLocations, isAvailable, type BalanceRow } from "@/lib/queries";
+import Link from "next/link";
+import { getBalances, getLocations, getProducts, isAvailable, type BalanceRow } from "@/lib/queries";
 import { ajustarStock } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
@@ -46,6 +47,55 @@ function AjusteForm({ b, compact = false }: { b: BalanceRow; compact?: boolean }
   );
 }
 
+type Ubicacion = { id: string; name: string };
+
+// producto en 0: no tiene renglón, así que el ajuste pide la ubicación
+function AjusteSinStock({ productId, ubicaciones }: { productId: string; ubicaciones: Ubicacion[] }) {
+  return (
+    <details>
+      <summary className="cursor-pointer py-1 text-xs font-medium text-rose-deep hover:underline">
+        Cargar cantidad
+      </summary>
+      <form action={ajustarStock} className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="renglon" value={`${productId}||`} />
+        <input
+          type="number"
+          name="cantidad_nueva"
+          min="0.001"
+          step="any"
+          required
+          placeholder="Cantidad"
+          aria-label="Cantidad real"
+          className="w-28 rounded-lg border border-line px-3 py-2 text-sm"
+        />
+        <select
+          name="ubicacion"
+          required
+          aria-label="Ubicación"
+          className="rounded-lg border border-line bg-white px-3 py-2 text-sm"
+        >
+          <option value="">Ubicación…</option>
+          {ubicaciones.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          name="motivo"
+          placeholder="Motivo del ajuste"
+          required
+          className="w-44 rounded-lg border border-line px-3 py-2 text-sm"
+        />
+        <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white">
+          Confirmar
+        </SubmitButton>
+      </form>
+    </details>
+  );
+}
+
 function LotBadge({ b }: { b: BalanceRow }) {
   if (!b.lot) return <span>—</span>;
   return (
@@ -73,7 +123,18 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   const user = await requireSection("stock");
   const puedeAjustar = user.role === "ADMIN" || user.role === "MANAGER";
   const sp = await searchParams;
-  const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
+  const [balances, locations, productos] = await Promise.all([getBalances(), getLocations(), getProducts()]);
+
+  // productos activos sin stock en ninguna ubicación (no tienen renglón en balances)
+  const conStock = new Set(balances.map((b) => b.product.id));
+  let sinStock = productos.filter((p) => p.active && !conStock.has(p.id));
+  if (sp.q) {
+    const needle = sp.q.toLowerCase();
+    sinStock = sinStock.filter(
+      (p) => p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle)
+    );
+  }
+  const mostrarSinStock = !sp.disp || sp.disp === "cero";
 
   let rows = balances;
   if (sp.q) {
@@ -88,6 +149,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   if (sp.ubicacion) rows = rows.filter((b) => b.location.id === sp.ubicacion);
   if (sp.disp === "si") rows = rows.filter(isAvailable);
   if (sp.disp === "no") rows = rows.filter((b) => !isAvailable(b));
+  if (sp.disp === "cero") rows = [];
 
   const key = (b: BalanceRow, col: string): string | number => {
     switch (col) {
@@ -144,6 +206,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             <option value="">Disponible y no disp.</option>
             <option value="si">Solo disponible</option>
             <option value="no">Solo no disponible</option>
+            <option value="cero">Solo productos en 0</option>
           </select>
           <button
             type="submit"
@@ -157,8 +220,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       <Flash ok={sp.ok} error={sp.error} />
       <p className="mb-3 text-sm text-soft">
         {rows.length} renglón(es) · {fmtQty(total)} unidades
+        {mostrarSinStock && sinStock.length > 0 && ` · ${sinStock.length} producto(s) en 0`}
       </p>
 
+      {sp.disp !== "cero" && (
+      <>
       {/* mobile: tarjetas */}
       <div className="space-y-2 md:hidden">
         {rows.map((b) => (
@@ -252,6 +318,53 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           </table>
         </div>
       </Card>
+      </>
+      )}
+
+      {mostrarSinStock && sinStock.length > 0 && (
+        <Card className="mt-4">
+          <h2 className="mb-1 font-semibold">Productos en 0 ({sinStock.length})</h2>
+          <p className="mb-3 text-sm text-soft">
+            Activos sin stock en ninguna ubicación.
+            {puedeAjustar &&
+              " Con \u201cCargar cantidad\u201d fijás lo que hay realmente (queda como ajuste). Si entró mercadería con lote, usá Nuevo ingreso."}
+          </p>
+          <ul className="divide-y divide-blush-100">
+            {sinStock.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-2.5">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">
+                    {p.name}
+                    {p.type === "KIT" && (
+                      <span className="ml-2 rounded-full bg-blush-100 px-2 py-0.5 text-xs font-medium text-rose-deeper">
+                        Kit
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-mono text-xs text-soft">{p.sku}</div>
+                </div>
+                <div className="flex flex-wrap items-start gap-3">
+                  {p.type === "KIT" ? (
+                    <Link
+                      href={`/productos/${p.id}`}
+                      className="py-1 text-xs font-medium text-rose-deep hover:underline"
+                    >
+                      Armar kits →
+                    </Link>
+                  ) : (
+                    puedeAjustar && <AjusteSinStock productId={p.id} ubicaciones={locations} />
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {sp.disp === "cero" && sinStock.length === 0 && (
+        <Card>
+          <p className="text-sm text-soft">No hay productos en 0.</p>
+        </Card>
+      )}
     </div>
   );
 }
