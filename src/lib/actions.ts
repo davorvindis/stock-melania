@@ -694,48 +694,130 @@ export async function eliminarProveedor(formData: FormData) {
 
 // ── Componentes de kit ──────────────────────────────────────────────
 
-const componenteSchema = z.object({
-  kit: uuid,
-  componente: uuid,
-  cantidad: numeroPositivo,
-});
-
-export async function agregarComponenteKit(formData: FormData) {
-  const user = await requireSection("productos");
-  const parsed = componenteSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
-  const d = parsed.data;
-  const back = `/productos/${d.kit}`;
-  const { data: comp } = await db().from("products").select("type, name").eq("id", d.componente).maybeSingle();
-  if (!comp) backWithError(back, "Componente inexistente");
-  if (comp.type === "KIT") backWithError(back, "Un kit no puede contener otro kit");
-  const { error } = await db().from("kit_components").insert({
-    kit_id: d.kit,
-    component_id: d.componente,
-    quantity: d.cantidad,
-  });
-  if (error) {
-    backWithError(back, error.code === "23505" ? `${comp.name} ya es parte del kit` : error.message);
+// composición completa desde el armador visual (inputs comp_id/comp_qty)
+async function leerComposicion(formData: FormData, back: string, kitId?: string) {
+  const ids = formData.getAll("comp_id").map(String);
+  const qtys = formData.getAll("comp_qty").map(String);
+  const comps: { component_id: string; quantity: number }[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = uuid.safeParse(ids[i]);
+    const qty = numeroPositivo.safeParse(qtys[i]);
+    if (!id.success) backWithError(back, "Componente inválido");
+    if (!qty.success) backWithError(back, "Todas las cantidades del kit deben ser mayores a 0");
+    if (id.data === kitId) backWithError(back, "Un kit no puede contenerse a sí mismo");
+    if (comps.some((c) => c.component_id === id.data)) backWithError(back, "Hay un producto repetido en el kit");
+    comps.push({ component_id: id.data, quantity: qty.data });
   }
-  await db().from("audit_logs").insert({
-    actor: user.alias, action: "kit:add_component", entity: "products", entity_id: d.kit,
-    detail: { componente: comp.name, cantidad: d.cantidad },
-  });
-  okRedirect(back, "Componente agregado al kit");
+  if (comps.length === 0) backWithError(back, "Agregá al menos un producto al kit");
+  const { data: prods } = await db()
+    .from("products")
+    .select("id, name, type")
+    .in("id", comps.map((c) => c.component_id));
+  const nombres = new Map((prods ?? []).map((p) => [p.id, p.name]));
+  for (const c of comps) {
+    const p = prods?.find((x) => x.id === c.component_id);
+    if (!p) backWithError(back, "Componente inexistente");
+    if (p.type === "KIT") backWithError(back, `"${p.name}" es un kit: un kit no puede contener otro kit`);
+  }
+  return { comps, nombres };
 }
 
-export async function quitarComponenteKit(formData: FormData) {
+const kitNuevoSchema = z.object({
+  sku: z.string().trim().min(1, "Falta el SKU"),
+  nombre: z.string().trim().min(1, "Falta el nombre"),
+  descripcion: z.string().trim().optional(),
+  stock_minimo: z.coerce.number().min(0).default(0),
+});
+
+export async function crearKit(formData: FormData) {
   const user = await requireSection("productos");
-  const id = uuid.safeParse(String(formData.get("componente_id") ?? ""));
-  const kit = String(formData.get("kit") ?? "");
-  if (!id.success) backWithError("/productos", "Componente inválido");
-  const back = `/productos/${kit}`;
-  const { error } = await db().from("kit_components").delete().eq("id", id.data);
-  if (error) backWithError(back, error.message);
-  await db().from("audit_logs").insert({
-    actor: user.alias, action: "kit:remove_component", entity: "products", entity_id: kit || null,
+  const back = "/productos/kits/nuevo";
+  const parsed = kitNuevoSchema.safeParse({
+    sku: formData.get("sku"),
+    nombre: formData.get("nombre"),
+    descripcion: formData.get("descripcion") ?? undefined,
+    stock_minimo: formData.get("stock_minimo") || 0,
   });
-  okRedirect(back, "Componente quitado del kit");
+  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+  const { comps, nombres } = await leerComposicion(formData, back);
+
+  const { data: creado, error } = await db()
+    .from("products")
+    .insert({
+      sku: d.sku,
+      name: d.nombre,
+      description: d.descripcion || null,
+      unit: "unidad",
+      type: "KIT",
+      min_stock: d.stock_minimo,
+    })
+    .select("id")
+    .single();
+  if (error || !creado) {
+    backWithError(back, error?.code === "23505" ? `El SKU "${d.sku}" ya existe` : (error?.message ?? "Error al crear"));
+  }
+  const { error: errComp } = await db()
+    .from("kit_components")
+    .insert(comps.map((c) => ({ kit_id: creado.id, ...c })));
+  if (errComp) {
+    // el kit recién creado no tiene historial: se descarta para no dejarlo vacío
+    await db().from("products").delete().eq("id", creado.id);
+    backWithError(back, errComp.message);
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "product:create", entity: "products", entity_id: creado.id,
+    detail: { sku: d.sku, kit: comps.map((c) => ({ componente: nombres.get(c.component_id), cantidad: c.quantity })) },
+  });
+  okRedirect(`/productos/${creado.id}`, `Kit ${d.sku} creado con ${comps.length} producto(s)`);
+}
+
+export async function guardarComponentesKit(formData: FormData) {
+  const user = await requireSection("productos");
+  const kit = uuid.safeParse(String(formData.get("kit") ?? ""));
+  if (!kit.success) backWithError("/productos", "Kit inválido");
+  const back = `/productos/${kit.data}`;
+  const { comps, nombres } = await leerComposicion(formData, back, kit.data);
+
+  const { data: actuales, error: errLeer } = await db()
+    .from("kit_components")
+    .select("id, component_id, quantity")
+    .eq("kit_id", kit.data);
+  if (errLeer) backWithError(back, errLeer.message);
+
+  const nuevos = new Map(comps.map((c) => [c.component_id, c.quantity]));
+  const aBorrar = (actuales ?? []).filter((a) => !nuevos.has(a.component_id)).map((a) => a.id);
+  const aActualizar = (actuales ?? []).filter(
+    (a) => nuevos.has(a.component_id) && Number(a.quantity) !== nuevos.get(a.component_id),
+  );
+  const existentes = new Set((actuales ?? []).map((a) => a.component_id));
+  const aInsertar = comps.filter((c) => !existentes.has(c.component_id));
+
+  if (aBorrar.length) {
+    const { error } = await db().from("kit_components").delete().in("id", aBorrar);
+    if (error) backWithError(back, error.message);
+  }
+  for (const a of aActualizar) {
+    const { error } = await db()
+      .from("kit_components")
+      .update({ quantity: nuevos.get(a.component_id) })
+      .eq("id", a.id);
+    if (error) backWithError(back, error.message);
+  }
+  if (aInsertar.length) {
+    const { error } = await db()
+      .from("kit_components")
+      .insert(aInsertar.map((c) => ({ kit_id: kit.data, ...c })));
+    if (error) backWithError(back, error.message);
+  }
+  if (!aBorrar.length && !aActualizar.length && !aInsertar.length) {
+    okRedirect(back, "Sin cambios en el kit");
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "kit:set_components", entity: "products", entity_id: kit.data,
+    detail: { kit: comps.map((c) => ({ componente: nombres.get(c.component_id), cantidad: c.quantity })) },
+  });
+  okRedirect(back, "Contenido del kit guardado");
 }
 
 // ── Armado / desarmado de kits ──────────────────────────────────────

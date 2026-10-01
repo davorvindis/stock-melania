@@ -29,3 +29,10 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* armador de kits: rebote al soltar un producto en la caja */
+@keyframes pop {
+  0% { transform: scale(0.92); opacity: 0.4; }
+  60% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); }
+}

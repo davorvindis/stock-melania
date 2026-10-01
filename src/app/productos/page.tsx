@@ -31,12 +31,20 @@ export default async function Productos({
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <PageTitle>Productos</PageTitle>
+        <div className="flex flex-wrap gap-2">
+        <Link
+          href="/productos/kits/nuevo"
+          className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper"
+        >
+          🎁 Armar kit
+        </Link>
         <Link
           href="/productos/importar"
           className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush"
         >
           Importar desde Excel
         </Link>
+        </div>
       </div>
       <Flash ok={ok} error={error} />
 
