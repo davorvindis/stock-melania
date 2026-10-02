@@ -5,7 +5,7 @@ import { getProducts, getLocations } from "@/lib/queries";
 import { randomUUID } from "crypto";
 import { crearProducto } from "@/lib/actions";
 import { fmtQty } from "@/lib/types";
-import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
+import { Card, Flash, PageTitle, SortTh, cmp, input, label, button, th, td } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +19,65 @@ const TIPOS = [
   ["KIT", "Kit (combo: descuenta sus componentes)"],
 ] as const;
 
+type SP = {
+  ok?: string;
+  error?: string;
+  q?: string;
+  tipo?: string;
+  categoria?: string;
+  estado?: string;
+  sort?: string;
+  dir?: string;
+};
+
 export default async function Productos({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; error?: string }>;
+  searchParams: Promise<SP>;
 }) {
   await requireSection("productos");
-  const { ok, error } = await searchParams;
-  const [products, ubicaciones] = await Promise.all([getProducts(), getLocations()]);
+  const sp = await searchParams;
+  const { ok, error } = sp;
+  const [todos, ubicaciones] = await Promise.all([getProducts(), getLocations()]);
+  const categorias = [...new Set(todos.map((p) => p.category).filter((c): c is string => !!c))].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+
+  let products = todos;
+  if (sp.q) {
+    const needle = sp.q.toLowerCase();
+    products = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(needle) ||
+        p.sku.toLowerCase().includes(needle) ||
+        (p.category ?? "").toLowerCase().includes(needle)
+    );
+  }
+  if (sp.tipo) products = products.filter((p) => p.type === sp.tipo);
+  if (sp.categoria) products = products.filter((p) => p.category === sp.categoria);
+  if (sp.estado === "activo") products = products.filter((p) => p.active);
+  if (sp.estado === "inactivo") products = products.filter((p) => !p.active);
+
+  const key = (p: (typeof todos)[number], col: string): string | number => {
+    switch (col) {
+      case "sku":
+        return p.sku;
+      case "nombre":
+        return p.name;
+      case "tipo":
+        return TIPOS.find(([v]) => v === p.type)?.[1] ?? p.type;
+      case "unidad":
+        return p.unit;
+      case "minimo":
+        return Number(p.min_stock);
+      case "estado":
+        return p.active ? 0 : 1;
+      default:
+        return 0;
+    }
+  };
+  if (sp.sort) products = [...products].sort((a, b) => cmp(key(a, sp.sort!), key(b, sp.sort!), sp.dir));
+  const hayFiltros = !!(sp.q || sp.tipo || sp.categoria || sp.estado);
 
   return (
     <div>
@@ -50,8 +101,9 @@ export default async function Productos({
       <Flash ok={ok} error={error} />
 
       <Card className="mb-4">
-        <h2 className="mb-3 font-semibold">Nuevo producto</h2>
-        <form action={crearProducto} className="grid gap-3 sm:grid-cols-6">
+        <details open={!!error}>
+        <summary className="cursor-pointer font-semibold text-rose-deep">+ Nuevo producto</summary>
+        <form action={crearProducto} className="mt-3 grid gap-3 sm:grid-cols-6">
           <div>
             <label className={label}>SKU *</label>
             <input type="text" name="sku" required placeholder="MEL-…" className={input} />
@@ -119,9 +171,65 @@ export default async function Productos({
             </SubmitButton>
           </div>
         </form>
+        </details>
       </Card>
 
+      <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        {sp.sort && <input type="hidden" name="sort" value={sp.sort} />}
+        {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
+        <input
+          type="search"
+          name="q"
+          defaultValue={sp.q ?? ""}
+          placeholder="Buscar por nombre, SKU o categoría…"
+          className={`${input} sm:col-span-2`}
+        />
+        <select name="tipo" defaultValue={sp.tipo ?? ""} aria-label="Tipo" className={input}>
+          <option value="">Todos los tipos</option>
+          {TIPOS.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+        <select name="categoria" defaultValue={sp.categoria ?? ""} aria-label="Categoría" className={input}>
+          <option value="">Todas las categorías</option>
+          {categorias.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select name="estado" defaultValue={sp.estado ?? ""} aria-label="Estado" className={input}>
+          <option value="">Activos e inactivos</option>
+          <option value="activo">Solo activos</option>
+          <option value="inactivo">Solo inactivos</option>
+        </select>
+        <button
+          type="submit"
+          className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper"
+        >
+          Filtrar
+        </button>
+      </form>
+      <p className="mb-3 text-sm text-soft">
+        {products.length} de {todos.length} producto(s)
+        {hayFiltros && (
+          <>
+            {" · "}
+            <Link href="/productos" className="font-medium text-rose-deep hover:underline">
+              Limpiar filtros
+            </Link>
+          </>
+        )}
+      </p>
+
       <div className="space-y-2 md:hidden">
+        {products.length === 0 && (
+          <Card>
+            <p className="text-sm text-soft">Ningún producto coincide con la búsqueda o filtros.</p>
+          </Card>
+        )}
         {products.map((p) => (
           <Link key={p.id} href={`/productos/${p.id}`} className="block rounded-lg border border-blush-100 bg-white p-3 hover:border-blush">
             <div className="flex items-center justify-between gap-2">
@@ -142,12 +250,12 @@ export default async function Productos({
           <table className="w-full">
             <thead>
               <tr className="border-b border-line">
-                <th className={th}>SKU</th>
-                <th className={th}>Nombre</th>
-                <th className={th}>Tipo</th>
-                <th className={th}>Unidad</th>
-                <th className={th}>Stock mínimo</th>
-                <th className={th}>Estado</th>
+                <SortTh col="sku" sp={sp} path="/productos">SKU</SortTh>
+                <SortTh col="nombre" sp={sp} path="/productos">Nombre</SortTh>
+                <SortTh col="tipo" sp={sp} path="/productos">Tipo</SortTh>
+                <SortTh col="unidad" sp={sp} path="/productos">Unidad</SortTh>
+                <SortTh col="minimo" sp={sp} path="/productos">Stock mínimo</SortTh>
+                <SortTh col="estado" sp={sp} path="/productos">Estado</SortTh>
                 <th className={th}></th>
               </tr>
             </thead>
@@ -167,6 +275,13 @@ export default async function Productos({
                   </td>
                 </tr>
               ))}
+              {products.length === 0 && (
+                <tr>
+                  <td className={td} colSpan={7}>
+                    Ningún producto coincide con la búsqueda o filtros.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
