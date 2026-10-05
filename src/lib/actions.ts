@@ -434,6 +434,136 @@ export async function cambiarEstadoLote(formData: FormData) {
   okRedirect(back, "Estado del lote actualizado");
 }
 
+// asigna nro de lote + vencimiento a stock existente (sin lote o de otro lote).
+// origen: "TODO" = todo el stock sin lote del producto; "lotId|locationId" = un renglón
+const asignarLoteSchema = z.object({
+  producto: uuid,
+  origen: z.string().min(1, "Elegí qué stock pasa al lote"),
+  cantidad: z.string().optional(),
+  lote: z.string().trim().min(1, "Indicá el número de lote"),
+  vencimiento: z.string().optional(),
+  idem: z.string().min(8),
+});
+
+export async function asignarLote(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const back = "/lotes";
+  const parsed = asignarLoteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+
+  let fromLot: string | null = null;
+  let location: string | null = null;
+  let qty: number | null = null;
+  if (d.origen !== "TODO") {
+    const [lotId, locId] = d.origen.split("|");
+    if (lotId && !uuid.safeParse(lotId).success) backWithError(back, "Origen inválido");
+    if (!uuid.safeParse(locId).success) backWithError(back, "Origen inválido");
+    fromLot = lotId || null;
+    location = locId;
+    if (d.cantidad) {
+      qty = Number(d.cantidad);
+      if (!(qty > 0)) backWithError(back, "La cantidad debe ser mayor a 0");
+    }
+  }
+
+  const { error } = await db().rpc("assign_lot", {
+    p_product: d.producto,
+    p_from_lot: fromLot,
+    p_location: location,
+    p_qty: qty,
+    p_code: d.lote,
+    p_expires: d.vencimiento || null,
+    p_actor: user.alias,
+    p_idem: d.idem,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, `Stock asignado al lote ${d.lote}`);
+}
+
+// lote nuevo: con cantidad es un ingreso (crea el lote y suma stock); sin
+// cantidad solo registra el lote para usarlo después
+const nuevoLoteSchema = z.object({
+  producto: uuid,
+  lote: z.string().trim().min(1, "Indicá el número de lote"),
+  vencimiento: z.string().optional(),
+  cantidad: z.string().optional(),
+  ubicacion: z.string().optional(),
+  idem: z.string().min(8),
+});
+
+export async function crearLote(formData: FormData) {
+  const user = await requireSection("lotes");
+  const back = "/lotes";
+  const parsed = nuevoLoteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+  const { data: prod } = await db().from("products").select("type").eq("id", d.producto).maybeSingle();
+  if (!prod) backWithError(back, "Producto inexistente");
+  if (prod.type === "KIT") backWithError(back, "Los kits no llevan lote: se arman con sus componentes");
+
+  const cantidad = d.cantidad ? Number(d.cantidad) : 0;
+  if (!(cantidad >= 0)) backWithError(back, "Cantidad inválida");
+  if (cantidad > 0) {
+    if (!can(user, "ingresos")) backWithError(back, "No tenés permiso para cargar ingresos de stock");
+    if (!uuid.safeParse(d.ubicacion).success) backWithError(back, "Elegí en qué ubicación entra el lote");
+    const { error } = await db().rpc("create_stock_entry", {
+      p_entry_date: new Date().toISOString().slice(0, 10),
+      p_supplier: null,
+      p_remito: null,
+      p_invoice: null,
+      p_notes: "Lote nuevo cargado desde Lotes",
+      p_actor: user.alias,
+      p_idem: d.idem,
+      p_lines: [
+        {
+          product_id: d.producto,
+          lot_code: d.lote,
+          expires_on: d.vencimiento || null,
+          quantity: cantidad,
+          unit_cost: null,
+          total_cost: null,
+          location_id: d.ubicacion,
+        },
+      ],
+    });
+    if (error) backWithError(back, error.message);
+    okRedirect(back, `Lote ${d.lote} ingresado con ${cantidad} unidad(es)`);
+  }
+
+  const { data: creado, error } = await db()
+    .from("lots")
+    .insert({ product_id: d.producto, code: d.lote, expires_on: d.vencimiento || null })
+    .select("id")
+    .single();
+  if (error || !creado) {
+    backWithError(back, error?.code === "23505" ? `El lote ${d.lote} ya existe para ese producto` : (error?.message ?? "Error al crear el lote"));
+  }
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "lot:create", entity: "lots", entity_id: creado.id,
+    detail: { code: d.lote, expires_on: d.vencimiento || null },
+  });
+  okRedirect(back, `Lote ${d.lote} creado (sin stock todavía)`);
+}
+
+// corrige el vencimiento de un lote (no toca stock)
+export async function editarVencimientoLote(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const lote = uuid.safeParse(String(formData.get("lote") ?? ""));
+  if (!lote.success) backWithError("/lotes", "Lote inválido");
+  const back = `/lotes/${lote.data}`;
+  const venc = String(formData.get("vencimiento") ?? "") || null;
+  const { data: antes } = await db().from("lots").select("expires_on").eq("id", lote.data).maybeSingle();
+  if (!antes) backWithError("/lotes", "Lote inexistente");
+  const { error } = await db().from("lots").update({ expires_on: venc }).eq("id", lote.data);
+  if (error) backWithError(back, error.message);
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "lot:expiry", entity: "lots", entity_id: lote.data,
+    detail: { antes: antes.expires_on, despues: venc },
+  });
+  okRedirect(back, "Vencimiento actualizado");
+}
+
 // ── Importación masiva de productos desde Excel ─────────────────────
 
 export async function importarProductos(formData: FormData) {

@@ -113,7 +113,7 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
           return (
             <div key={m.id} className={yaRevertido ? "opacity-50" : ""}>
               <MovementCard movement={m}>
-                {puedeRevertir && m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} compact />}
+                {puedeRevertir && m.type !== "REVERSAL" && m.type !== "LOT_ASSIGNMENT" && !yaRevertido && <RevertForm movement={m} compact />}
                 {yaRevertido && <div className="mt-1 text-xs text-soft">Revertido</div>}
               </MovementCard>
             </div>
@@ -160,7 +160,7 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
                     <td className={td}>{m.reason ?? "—"}</td>
                     <td className={td}>{m.actor ?? "—"}</td>
                     <td className={td}>
-                      {puedeRevertir && m.type !== "REVERSAL" && !yaRevertido && <RevertForm movement={m} />}
+                      {puedeRevertir && m.type !== "REVERSAL" && m.type !== "LOT_ASSIGNMENT" && !yaRevertido && <RevertForm movement={m} />}
                       {yaRevertido && <span className="text-xs text-soft">Revertido</span>}
                     </td>
                   </tr>

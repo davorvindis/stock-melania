@@ -224,7 +224,8 @@ export async function getDailyFlow(days = 14) {
   const { data, error } = await db()
     .from("inventory_movements")
     .select("occurred_at, quantity, from_location_id, to_location_id")
-    .gte("occurred_at", since.toISOString());
+    .gte("occurred_at", since.toISOString())
+    .neq("type", "LOT_ASSIGNMENT"); // reclasificación de lote: no es entrada ni salida
   if (error) throw new Error(error.message);
   const fmt = new Intl.DateTimeFormat("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",

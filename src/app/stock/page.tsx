@@ -109,12 +109,67 @@ function LotBadge({ b }: { b: BalanceRow }) {
   );
 }
 
+function LotesChips({
+  lotes,
+  asignarHref,
+}: {
+  lotes: { code: string | null; qty: number; vence: string | null }[];
+  asignarHref?: string;
+}) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {lotes.map((l) => (
+        <span
+          key={l.code ?? "sin"}
+          className={`rounded-full px-2 py-0.5 text-xs ${l.code ? "bg-blush-100 text-rose-deeper" : "bg-amber-50 text-amber-800"}`}
+          title={l.vence ? `Vence ${fmtDate(l.vence)}` : undefined}
+        >
+          {l.code ?? "Sin lote"}: <b>{fmtQty(l.qty)}</b>
+          {l.vence ? ` · ${fmtDate(l.vence)}` : ""}
+        </span>
+      ))}
+      {asignarHref && lotes.some((l) => !l.code) && (
+        <Link href={asignarHref} className="text-xs font-medium text-rose-deep hover:underline">
+          Asignar lote →
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// desglose por lote y ubicación dentro de la vista por producto
+function DetalleFilas({ filas, puedeAjustar }: { filas: BalanceRow[]; puedeAjustar: boolean }) {
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-xs font-medium text-rose-deep hover:underline">
+        Ver detalle ({filas.length})
+      </summary>
+      <ul className="mt-2 space-y-2">
+        {filas.map((b) => (
+          <li key={b.id} className="rounded-lg bg-blush-50 px-3 py-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                {b.lot ? `Lote ${b.lot.code}` : "Sin lote"} · {b.location.name}
+                {b.location.is_quarantine ? " ⚠" : ""} <LotBadge b={b} />
+              </span>
+              <span className="font-semibold">{fmtQty(b.quantity)}</span>
+            </div>
+            {puedeAjustar && <AjusteForm b={b} compact />}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 type SP = {
   ok?: string;
   error?: string;
   q?: string;
   ubicacion?: string;
   disp?: string;
+  lote?: string;
+  vista?: string;
   sort?: string;
   dir?: string;
 };
@@ -134,7 +189,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       (p) => p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle)
     );
   }
-  const mostrarSinStock = !sp.disp || sp.disp === "cero";
+  const mostrarSinStock = (!sp.disp || sp.disp === "cero") && !sp.lote;
 
   let rows = balances;
   if (sp.q) {
@@ -145,6 +200,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         b.product.sku.toLowerCase().includes(needle) ||
         (b.lot?.code ?? "").toLowerCase().includes(needle)
     );
+  }
+  if (sp.lote) {
+    const l = sp.lote.trim().toLowerCase();
+    rows = rows.filter((b) => (l === "sin" ? !b.lot : (b.lot?.code ?? "").toLowerCase().includes(l)));
   }
   if (sp.ubicacion) rows = rows.filter((b) => b.location.id === sp.ubicacion);
   if (sp.disp === "si") rows = rows.filter(isAvailable);
@@ -173,6 +232,65 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
 
   const total = rows.reduce((s, b) => s + Number(b.quantity), 0);
 
+  // vista por producto (default): total del producto + desglose por lote
+  const porLote = sp.vista === "lote";
+  type Grupo = {
+    product: BalanceRow["product"];
+    total: number;
+    disponible: number;
+    vence: string | null;
+    lotes: Map<string, { code: string | null; qty: number; vence: string | null }>;
+    filas: BalanceRow[];
+  };
+  const grupos = new Map<string, Grupo>();
+  for (const b of rows) {
+    let g = grupos.get(b.product.id);
+    if (!g) {
+      g = { product: b.product, total: 0, disponible: 0, vence: null, lotes: new Map(), filas: [] };
+      grupos.set(b.product.id, g);
+    }
+    const q = Number(b.quantity);
+    g.total += q;
+    if (isAvailable(b)) g.disponible += q;
+    const venc = b.lot?.expires_on ?? null;
+    if (venc && (!g.vence || venc < g.vence)) g.vence = venc;
+    const k = b.lot?.id ?? "";
+    const l = g.lotes.get(k) ?? { code: b.lot?.code ?? null, qty: 0, vence: venc };
+    l.qty += q;
+    g.lotes.set(k, l);
+    g.filas.push(b);
+  }
+  const keyGrupo = (g: Grupo, col: string): string | number => {
+    switch (col) {
+      case "sku":
+        return g.product.sku;
+      case "producto":
+        return g.product.name;
+      case "vence":
+        return g.vence ?? "9999";
+      case "cantidad":
+        return g.total;
+      default:
+        return 0;
+    }
+  };
+  let listaGrupos = [...grupos.values()];
+  listaGrupos = sp.sort
+    ? listaGrupos.sort((a, b) => cmp(keyGrupo(a, sp.sort!), keyGrupo(b, sp.sort!), sp.dir))
+    : listaGrupos.sort((a, b) => b.total - a.total);
+  const lotesOrdenados = (g: Grupo) =>
+    [...g.lotes.values()].sort((a, b) => (a.vence ?? "9999").localeCompare(b.vence ?? "9999"));
+
+  const linkVista = (v: string) => {
+    const params = new URLSearchParams();
+    for (const [k, val] of Object.entries(sp)) {
+      if (val && !["ok", "error", "vista", "sort", "dir"].includes(k)) params.set(k, val);
+    }
+    if (v === "lote") params.set("vista", "lote");
+    const qs = params.toString();
+    return qs ? `/stock?${qs}` : "/stock";
+  };
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -185,13 +303,37 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         </a>
       </div>
 
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-4">
+      <div className="mb-3 inline-flex rounded-lg border border-line bg-white p-1 text-sm">
+        <Link
+          href={linkVista("producto")}
+          className={`rounded-md px-3 py-1.5 font-medium ${!porLote ? "bg-rose-deep text-white" : "text-soft hover:text-ink"}`}
+        >
+          Por producto
+        </Link>
+        <Link
+          href={linkVista("lote")}
+          className={`rounded-md px-3 py-1.5 font-medium ${porLote ? "bg-rose-deep text-white" : "text-soft hover:text-ink"}`}
+        >
+          Por lote y ubicación
+        </Link>
+      </div>
+
+      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-6">
+        {porLote && <input type="hidden" name="vista" value="lote" />}
         <input
           type="search"
           name="q"
           defaultValue={sp.q ?? ""}
           placeholder="Buscar SKU, producto o lote…"
           className={`${input} sm:col-span-2`}
+        />
+        <input
+          type="search"
+          name="lote"
+          defaultValue={sp.lote ?? ""}
+          placeholder="N° de lote (o &quot;sin&quot;)"
+          aria-label="Filtrar por lote"
+          className={input}
         />
         <select name="ubicacion" defaultValue={sp.ubicacion ?? ""} className={input}>
           <option value="">Todas las ubicaciones</option>
@@ -201,7 +343,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             </option>
           ))}
         </select>
-        <div className="flex gap-2">
+        <div className="flex gap-2 sm:col-span-2">
           <select name="disp" defaultValue={sp.disp ?? ""} className={input}>
             <option value="">Disponible y no disp.</option>
             <option value="si">Solo disponible</option>
@@ -219,11 +361,89 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
 
       <Flash ok={sp.ok} error={sp.error} />
       <p className="mb-3 text-sm text-soft">
-        {rows.length} renglón(es) · {fmtQty(total)} unidades
+        {porLote ? `${rows.length} renglón(es)` : `${listaGrupos.length} producto(s)`} · {fmtQty(total)} unidades
+        {sp.lote && ` · lote "${sp.lote}"`}
         {mostrarSinStock && sinStock.length > 0 && ` · ${sinStock.length} producto(s) en 0`}
       </p>
 
-      {sp.disp !== "cero" && (
+      {sp.disp !== "cero" && !porLote && (
+        <>
+          {/* mobile: tarjetas por producto */}
+          <div className="space-y-2 md:hidden">
+            {listaGrupos.map((g) => (
+              <div key={g.product.id} className="rounded-lg border border-blush-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{g.product.name}</div>
+                    <div className="font-mono text-xs text-soft">{g.product.sku}</div>
+                  </div>
+                  <span className="shrink-0 font-display text-3xl leading-none">
+                    {fmtQty(g.total)} <span className="font-sans text-xs text-soft">{g.product.unit}</span>
+                  </span>
+                </div>
+                <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} />
+                {g.disponible !== g.total && (
+                  <div className="mt-1 text-xs font-medium text-amber-700">Disponible: {fmtQty(g.disponible)}</div>
+                )}
+                <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} />
+              </div>
+            ))}
+            {listaGrupos.length === 0 && (
+              <Card>
+                <p className="text-sm text-soft">Nada coincide con la búsqueda o filtros.</p>
+              </Card>
+            )}
+          </div>
+
+          {/* escritorio: tabla por producto */}
+          <Card className="hidden md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-line">
+                    <SortTh col="sku" sp={sp} path="/stock">SKU</SortTh>
+                    <SortTh col="producto" sp={sp} path="/stock">Producto</SortTh>
+                    <th className={th}>Lotes</th>
+                    <SortTh col="vence" sp={sp} path="/stock">Próx. venc.</SortTh>
+                    <SortTh col="cantidad" sp={sp} path="/stock">Total</SortTh>
+                    <th className={th}>Disponible</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listaGrupos.map((g) => (
+                    <tr key={g.product.id} className="border-b border-blush-100 align-top">
+                      <td className={`${td} font-mono text-xs`}>{g.product.sku}</td>
+                      <td className={td}>
+                        {g.product.name}
+                        <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} />
+                      </td>
+                      <td className={td}>
+                        <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} />
+                      </td>
+                      <td className={td}>{fmtDate(g.vence)}</td>
+                      <td className={`${td} font-semibold`}>
+                        {fmtQty(g.total)} <span className="text-xs text-soft">{g.product.unit}</span>
+                      </td>
+                      <td className={`${td} ${g.disponible !== g.total ? "font-medium text-amber-700" : ""}`}>
+                        {fmtQty(g.disponible)}
+                      </td>
+                    </tr>
+                  ))}
+                  {listaGrupos.length === 0 && (
+                    <tr>
+                      <td className={td} colSpan={6}>
+                        Nada coincide con la búsqueda o filtros.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {sp.disp !== "cero" && porLote && (
       <>
       {/* mobile: tarjetas */}
       <div className="space-y-2 md:hidden">

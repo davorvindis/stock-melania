@@ -20,6 +20,7 @@ export const MOVEMENT_LABELS: Record<string, string> = {
   COUNT_ADJUSTMENT: "Ajuste por conteo",
   KIT_ASSEMBLY: "Armado de kit",
   KIT_DISASSEMBLY: "Desarmado de kit",
+  LOT_ASSIGNMENT: "Asignación de lote",
   REVERSAL: "Reversión",
   OTHER: "Otro",
 };

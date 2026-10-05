@@ -1,7 +1,7 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getLotDetail } from "@/lib/queries";
-import { cambiarEstadoLote } from "@/lib/actions";
+import { cambiarEstadoLote, editarVencimientoLote } from "@/lib/actions";
 import {
   LOT_STATUS_LABELS,
   MOVEMENT_LABELS,
@@ -133,6 +133,23 @@ export default async function LoteDetalle({
           </div>
         </form>
       </Card>
+      )}
+
+      {(user.role === "ADMIN" || user.role === "MANAGER") && (
+        <Card className="mt-4">
+          <h2 className="mb-1 font-semibold">Corregir vencimiento</h2>
+          <p className="mb-3 text-sm text-soft">No mueve stock; el cambio queda auditado.</p>
+          <form action={editarVencimientoLote} className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="lote" value={lot.id} />
+            <div>
+              <label className={label}>Vencimiento</label>
+              <input type="date" name="vencimiento" defaultValue={lot.expires_on ?? ""} className={input} />
+            </div>
+            <SubmitButton className="rounded-lg bg-rose-deep px-5 py-2.5 font-semibold text-white hover:bg-rose-deeper">
+              Guardar
+            </SubmitButton>
+          </form>
+        </Card>
       )}
 
       <h2 className="mb-2 mt-6 font-display text-2xl tracking-wide">Historial del lote</h2>
