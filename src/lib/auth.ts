@@ -16,7 +16,14 @@ export type Profile = {
   permissions: Record<string, boolean>;
   active: boolean;
   must_change_pin: boolean;
+  location_id?: string | null;
+  location_locked?: boolean;
 };
+
+// ubicación a la que está atado el usuario (solo opera stock desde ahí), o null
+export function ubicacionFija(p: Profile): string | null {
+  return p.location_locked && p.location_id ? p.location_id : null;
+}
 
 // secciones de la app gobernadas por permisos (dashboard siempre accesible)
 export const SECTIONS: readonly { key: string; label: string }[] = [

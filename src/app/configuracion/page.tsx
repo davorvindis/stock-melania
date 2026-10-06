@@ -2,6 +2,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireSection, SECTIONS, can, type Profile } from "@/lib/auth";
 import { crearUsuario, blanquearPin, actualizarUsuario } from "@/lib/auth-actions";
 import { db } from "@/lib/db";
+import { getLocations } from "@/lib/queries";
 import { fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
@@ -20,8 +21,37 @@ export default async function Configuracion({
 }) {
   const admin = await requireSection("configuracion");
   const { ok, error } = await searchParams;
-  const { data } = await db().from("profiles").select("*").order("created_at");
+  const [{ data }, ubicaciones] = await Promise.all([
+    db().from("profiles").select("*").order("created_at"),
+    getLocations(),
+  ]);
   const usuarios = (data ?? []) as (Profile & { created_at: string })[];
+  const nombreUbic = new Map(ubicaciones.map((u) => [u.id, u.name]));
+
+  const camposUbicacion = (u?: Profile) => (
+    <div className="grid gap-2 sm:grid-cols-2 sm:items-end">
+      <div>
+        <label className={label}>Ubicación de trabajo</label>
+        <select name="ubicacion" defaultValue={u?.location_id ?? ""} className={input}>
+          <option value="">Sin ubicación asignada</option>
+          {ubicaciones.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <label className="flex items-center gap-2 pb-3 text-sm">
+        <input
+          type="checkbox"
+          name="ubicacion_fija"
+          defaultChecked={!!u?.location_locked}
+          className="h-4 w-4 accent-rose-deep"
+        />
+        Solo puede operar desde esta ubicación
+      </label>
+    </div>
+  );
 
   return (
     <div className="max-w-3xl">
@@ -58,6 +88,13 @@ export default async function Configuracion({
             </select>
           </div>
           <div className="sm:col-span-2">
+            {camposUbicacion()}
+            <p className="mt-1 text-xs text-soft">
+              La ubicación se precarga en sus movimientos e ingresos. Restringida: solo ve y mueve
+              stock de esa ubicación (ej. Store → Venta). Solo un administrador puede cambiarla.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
             <SubmitButton className={button}>
               Crear usuario y generar PIN
             </SubmitButton>
@@ -80,6 +117,7 @@ export default async function Configuracion({
                 )}
               </div>
               <div className="text-xs text-soft">
+                {u.location_id ? `📍 ${nombreUbic.get(u.location_id) ?? "?"}${u.location_locked ? " (fija)" : ""} · ` : ""}
                 {u.dni ? `DNI ${u.dni} · ` : ""}alta {fmtDate(u.created_at)}
                 {u.must_change_pin ? " · PIN temporal pendiente" : ""}
               </div>
@@ -100,6 +138,7 @@ export default async function Configuracion({
                   Activo
                 </label>
               </div>
+              {camposUbicacion(u)}
               <fieldset>
                 <legend className="mb-1 text-sm font-medium text-ink">Acceso por sección</legend>
                 <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">

@@ -1,5 +1,5 @@
 import { SubmitButton } from "@/components/submit-button";
-import { requireSection } from "@/lib/auth";
+import { requireSection, ubicacionFija } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getProducts, getLocations, getSuppliers } from "@/lib/queries";
 import { registrarIngreso } from "@/lib/actions";
@@ -12,7 +12,7 @@ export default async function NuevoIngreso({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
-  await requireSection("ingresos");
+  const user = await requireSection("ingresos");
   const { ok, error } = await searchParams;
   const [products, locations, suppliers] = await Promise.all([
     getProducts(),
@@ -102,9 +102,11 @@ export default async function NuevoIngreso({
             </div>
             <div>
               <label className={label}>Ubicación destino *</label>
-              <select name="ubicacion" required className={input}>
+              <select name="ubicacion" required defaultValue={user.location_id ?? ""} className={input}>
                 <option value="">Elegir ubicación…</option>
-                {locations.map((l) => (
+                {locations
+                  .filter((l) => !ubicacionFija(user) || l.id === ubicacionFija(user))
+                  .map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
                   </option>

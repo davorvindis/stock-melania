@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "./db";
-import { requireSection, requireRole, can } from "./auth";
+import { requireSection, requireRole, can, ubicacionFija, type Profile } from "./auth";
 import { NEEDS_DESTINATION, OPERABLE_TYPES } from "./types";
 
 function backWithError(path: string, message: string): never {
@@ -14,6 +14,14 @@ function backWithError(path: string, message: string): never {
 function okRedirect(path: string, message: string): never {
   revalidatePath("/", "layout");
   redirect(`${path}?ok=${encodeURIComponent(message)}`);
+}
+
+// usuario atado a una ubicación (ej. vendedora del Store): solo opera desde ahí
+function exigirUbicacion(user: Profile, locationId: string | null | undefined, back: string) {
+  const fija = ubicacionFija(user);
+  if (fija && locationId !== fija) {
+    backWithError(back, "Tu usuario solo puede operar stock desde su ubicación asignada");
+  }
 }
 
 const numeroPositivo = z.coerce.number().positive("La cantidad debe ser mayor a 0");
@@ -49,6 +57,7 @@ export async function registrarIngreso(formData: FormData) {
   if (costoTotal !== null && (isNaN(costoTotal) || costoTotal < 0)) backWithError(back, "Costo total inválido");
   if (costoUnitario !== null && (isNaN(costoUnitario) || costoUnitario < 0)) backWithError(back, "Costo unitario inválido");
 
+  exigirUbicacion(user, d.ubicacion, back);
   const { data: prodTipo } = await db().from("products").select("type").eq("id", d.producto).maybeSingle();
   if (prodTipo?.type === "KIT") {
     backWithError(back, "Los kits no llevan stock propio: ingresá stock de sus componentes");
@@ -124,6 +133,7 @@ export async function registrarMovimiento(formData: FormData) {
     }
   }
   if (lineas.length === 0) backWithError(back, "Agregá al menos un producto");
+  for (const l of lineas) exigirUbicacion(user, l.from_location_id, back);
 
   const needsDest = NEEDS_DESTINATION.includes(d.tipo);
   if (needsDest && !d.destino) backWithError(back, "Este tipo de movimiento necesita ubicación destino");
@@ -213,6 +223,7 @@ export async function crearProducto(formData: FormData) {
     if (!uuid.safeParse(ini.data.ubicacion_inicial).success) {
       backWithError(back, "Elegí en qué ubicación entra la cantidad inicial");
     }
+    exigirUbicacion(user, ini.data.ubicacion_inicial, back);
   }
   const { data: creado, error } = await db()
     .from("products")
@@ -342,6 +353,7 @@ export async function abrirConteo(formData: FormData) {
   const back = "/conteos";
   const ubicacion = uuid.safeParse(String(formData.get("ubicacion") ?? ""));
   if (!ubicacion.success) backWithError(back, "Elegí una ubicación");
+  exigirUbicacion(user, ubicacion.data, back);
   const { data, error } = await db().rpc("open_count", {
     p_location: ubicacion.data,
     p_actor: user.alias,
@@ -467,6 +479,8 @@ export async function asignarLote(formData: FormData) {
     }
   }
 
+  if (ubicacionFija(user) && !location) backWithError(back, "Elegí un renglón de tu ubicación");
+  if (location) exigirUbicacion(user, location, back);
   const { error } = await db().rpc("assign_lot", {
     p_product: d.producto,
     p_from_lot: fromLot,
@@ -507,6 +521,7 @@ export async function crearLote(formData: FormData) {
   if (cantidad > 0) {
     if (!can(user, "ingresos")) backWithError(back, "No tenés permiso para cargar ingresos de stock");
     if (!uuid.safeParse(d.ubicacion).success) backWithError(back, "Elegí en qué ubicación entra el lote");
+    exigirUbicacion(user, d.ubicacion, back);
     const { error } = await db().rpc("create_stock_entry", {
       p_entry_date: new Date().toISOString().slice(0, 10),
       p_supplier: null,
@@ -692,6 +707,7 @@ export async function ajustarStock(formData: FormData) {
   const d = parsed.data;
   const [productId, lotId, locationFila] = d.renglon.split("|");
   const locationId = locationFila || String(formData.get("ubicacion") ?? "");
+  exigirUbicacion(user, locationId, back);
   if (!productId || !locationId) backWithError(back, "Renglón inválido");
   const { error } = await db().rpc("adjust_stock_to", {
     p_product: productId,
@@ -929,6 +945,7 @@ export async function crearKit(formData: FormData) {
   if (armados > 0) {
     if (!can(user, "movimientos")) backWithError(back, "No tenés permiso para armar kits");
     if (!ubicArmados.success) backWithError(back, "Elegí en qué ubicación quedan los kits armados");
+    exigirUbicacion(user, ubicArmados.data, back);
   }
 
   const { data: creado, error } = await db()
@@ -1036,6 +1053,7 @@ export async function armarKits(formData: FormData) {
   if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
   const d = parsed.data;
   const back = `/productos/${d.kit}`;
+  exigirUbicacion(user, d.ubicacion, back);
   const { error } = await db().rpc("assemble_kits", {
     p_kit: d.kit,
     p_qty: d.cantidad,
@@ -1053,6 +1071,7 @@ export async function desarmarKits(formData: FormData) {
   if (!parsed.success) backWithError("/productos", parsed.error.issues[0].message);
   const d = parsed.data;
   const back = `/productos/${d.kit}`;
+  exigirUbicacion(user, d.ubicacion, back);
   const { error } = await db().rpc("disassemble_kits", {
     p_kit: d.kit,
     p_qty: d.cantidad,

@@ -1,5 +1,5 @@
 import { SubmitButton } from "@/components/submit-button";
-import { requireSection } from "@/lib/auth";
+import { requireSection, ubicacionFija } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getBalances, getLocations, isAvailable } from "@/lib/queries";
 import { registrarMovimiento } from "@/lib/actions";
@@ -14,11 +14,18 @@ export default async function NuevoMovimiento({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
-  await requireSection("movimientos");
+  const user = await requireSection("movimientos");
   const { ok, error } = await searchParams;
   const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
 
-  const opciones = balances.map((b) => ({
+  // stock del usuario: si está atado a una ubicación, solo esa; si no, la suya primero
+  const fija = ubicacionFija(user);
+  const miUbicacion = locations.find((l) => l.id === user.location_id);
+  const visibles = (fija ? balances.filter((b) => b.location.id === fija) : balances)
+    .slice()
+    .sort((a, b) => Number(b.location.id === user.location_id) - Number(a.location.id === user.location_id));
+
+  const opciones = visibles.map((b) => ({
     value: `${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`,
     label: `${b.product.name}${b.lot ? ` · lote ${b.lot.code}` : ""} · ${b.location.name} (${fmtQty(
       b.quantity
@@ -29,6 +36,14 @@ export default async function NuevoMovimiento({
     <div className="max-w-2xl">
       <PageTitle>Nuevo movimiento</PageTitle>
       <Flash ok={ok} error={error} />
+      {miUbicacion && (
+        <p className="mb-3 rounded-lg border border-blush-100 bg-white px-3 py-2 text-sm">
+          📍 Operás desde <b>{miUbicacion.name}</b>
+          {fija
+            ? ": los productos salen de acá (ej. venta = " + miUbicacion.name + " → Venta)."
+            : ". Su stock aparece primero en la lista."}
+        </p>
+      )}
       <Card>
         <form action={registrarMovimiento} className="space-y-4">
           <input type="hidden" name="idem" value={randomUUID()} />
@@ -49,7 +64,11 @@ export default async function NuevoMovimiento({
 
           <div>
             <label className={label}>Productos *</label>
-            <LineasMovimiento opciones={opciones} kits={[]} ubicaciones={locations} />
+            <LineasMovimiento
+              opciones={opciones}
+              kits={[]}
+              ubicaciones={fija ? locations.filter((l) => l.id === fija) : locations}
+            />
             <p className="mt-1 text-xs text-soft">
               Los kits armados aparecen acá como cualquier producto con stock. Se arman desde su
               página en Productos.

@@ -76,12 +76,30 @@ const usuarioSchema = z.object({
   rol: z.enum(["ADMIN", "MANAGER", "OPERATOR"]),
 });
 
+// ubicación de trabajo: solo la asigna un ADMIN
+async function leerUbicacion(formData: FormData, back: string) {
+  const ubicacion = String(formData.get("ubicacion") ?? "") || null;
+  const fija = formData.get("ubicacion_fija") === "on";
+  if (ubicacion && !z.string().uuid().safeParse(ubicacion).success) {
+    redirect(`${back}?error=${encodeURIComponent("Ubicación inválida")}`);
+  }
+  if (fija && !ubicacion) {
+    redirect(`${back}?error=${encodeURIComponent("Para restringir a una ubicación, elegí cuál")}`);
+  }
+  if (ubicacion) {
+    const { data } = await db().from("locations").select("id").eq("id", ubicacion).maybeSingle();
+    if (!data) redirect(`${back}?error=${encodeURIComponent("Ubicación inexistente")}`);
+  }
+  return { location_id: ubicacion, location_locked: fija };
+}
+
 export async function crearUsuario(formData: FormData) {
   const admin = await requireRole("ADMIN");
   const back = "/configuracion";
   const parsed = usuarioSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`${back}?error=${encodeURIComponent(parsed.error.issues[0].message)}`);
   const d = parsed.data;
+  const ubic = await leerUbicacion(formData, back);
 
   const pin = generarPin();
   const cli = db();
@@ -99,6 +117,7 @@ export async function crearUsuario(formData: FormData) {
     alias: d.alias,
     dni: d.dni || null,
     role: d.rol,
+    ...ubic,
   });
   if (pErr) {
     await cli.auth.admin.deleteUser(created.user.id);
@@ -110,7 +129,7 @@ export async function crearUsuario(formData: FormData) {
   }
   await cli.from("audit_logs").insert({
     actor: admin.alias, action: "user:create", entity: "profiles", entity_id: created.user.id,
-    detail: { email: d.email, alias: d.alias, role: d.rol },
+    detail: { email: d.email, alias: d.alias, role: d.rol, ...ubic },
   });
   revalidatePath("/configuracion");
   redirect(
@@ -154,18 +173,19 @@ export async function actualizarUsuario(formData: FormData) {
   if (id === admin.id && (rol !== "ADMIN" || !activo)) {
     redirect(`${back}?error=${encodeURIComponent("No podés desactivarte ni quitarte ADMIN a vos mismo")}`);
   }
+  const ubic = await leerUbicacion(formData, back);
   const permissions: Record<string, boolean> = {};
   for (const s of SECTIONS) {
     permissions[s.key] = formData.get(`perm_${s.key}`) === "on";
   }
   const { error } = await db()
     .from("profiles")
-    .update({ role: rol, active: activo, permissions })
+    .update({ role: rol, active: activo, permissions, ...ubic })
     .eq("id", id);
   if (error) redirect(`${back}?error=${encodeURIComponent(error.message)}`);
   await db().from("audit_logs").insert({
     actor: admin.alias, action: "user:update", entity: "profiles", entity_id: id,
-    detail: { role: rol, active: activo, permissions },
+    detail: { role: rol, active: activo, permissions, ...ubic },
   });
   revalidatePath("/configuracion");
   redirect(`${back}?ok=${encodeURIComponent("Usuario actualizado")}`);

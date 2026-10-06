@@ -4,6 +4,7 @@ import { Bebas_Neue, Montserrat } from "next/font/google";
 import { Nav } from "@/components/nav";
 import { getSessionUser, allowedSections } from "@/lib/auth";
 import { logout } from "@/lib/auth-actions";
+import { db } from "@/lib/db";
 import "./globals.css";
 
 const bebas = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-bebas" });
@@ -17,6 +18,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   const conMenu = user && !user.must_change_pin;
+  const ubicacion = user?.location_id
+    ? (await db().from("locations").select("name").eq("id", user.location_id).maybeSingle()).data?.name
+    : null;
 
   return (
     <html lang="es" className={`${bebas.variable} ${montserrat.variable}`}>
@@ -37,7 +41,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <span className="font-display text-2xl leading-none text-ink">Stock</span>
                   </div>
                   <form action={logout} className="flex items-center gap-2">
-                    <span className="hidden text-sm text-soft sm:inline">{user.alias}</span>
+                    <span className="text-sm text-soft">
+                      <span className="hidden sm:inline">{user.alias}</span>
+                      {ubicacion && <span className="ml-1 text-xs">📍 {ubicacion}</span>}
+                    </span>
                     <button
                       type="submit"
                       className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-soft hover:bg-blush-100 hover:text-ink"
