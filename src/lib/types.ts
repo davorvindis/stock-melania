@@ -25,6 +25,22 @@ export const MOVEMENT_LABELS: Record<string, string> = {
   OTHER: "Otro",
 };
 
+// lado sin ubicación de un movimiento: egresos van a "Venta", "Uso interno"…;
+// ingresos vienen de "Ingreso", "Reversión"…
+export function origenDestino(m: {
+  type: string;
+  from_location: { name: string } | null;
+  to_location: { name: string } | null;
+}): { origen: string; destino: string; origenEsTipo: boolean; destinoEsTipo: boolean } {
+  const tipo = MOVEMENT_LABELS[m.type] ?? m.type;
+  return {
+    origen: m.from_location?.name ?? tipo,
+    destino: m.to_location?.name ?? tipo,
+    origenEsTipo: !m.from_location,
+    destinoEsTipo: !m.to_location,
+  };
+}
+
 // tipos que exigen ubicación destino (además del origen)
 export const NEEDS_DESTINATION = ["TRANSFER", "QUARANTINE_IN", "QUARANTINE_RELEASE", "SUPPLIER_SEND"];
 

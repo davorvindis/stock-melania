@@ -12,7 +12,7 @@ import {
   lotBadgeClass,
 } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
-import { MovementCard } from "@/components/movement-card";
+import { MovementCard, OrigenDestino } from "@/components/movement-card";
 
 export const dynamic = "force-dynamic";
 
@@ -177,7 +177,7 @@ export default async function LoteDetalle({
                 <td className={td}>{MOVEMENT_LABELS[m.type] ?? m.type}</td>
                 <td className={`${td} font-medium`}>{fmtQty(m.quantity)}</td>
                 <td className={td}>
-                  {m.from_location?.name ?? "—"} → {m.to_location?.name ?? "—"}
+                  <OrigenDestino m={m} />
                 </td>
                 <td className={td}>{m.reason ?? "—"}</td>
                 <td className={td}>{m.actor ?? "—"}</td>

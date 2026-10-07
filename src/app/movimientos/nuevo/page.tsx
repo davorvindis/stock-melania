@@ -3,9 +3,10 @@ import { requireSection, ubicacionFija } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getBalances, getLocations, isAvailable } from "@/lib/queries";
 import { registrarMovimiento } from "@/lib/actions";
-import { MOVEMENT_LABELS, OPERABLE_TYPES, fmtQty } from "@/lib/types";
+import { fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label } from "@/components/ui";
 import { LineasMovimiento } from "@/components/lineas-movimiento";
+import { TipoDestino } from "@/components/tipo-destino";
 
 export const dynamic = "force-dynamic";
 
@@ -48,19 +49,7 @@ export default async function NuevoMovimiento({
         <form action={registrarMovimiento} className="space-y-4">
           <input type="hidden" name="idem" value={randomUUID()} />
 
-          <div>
-            <label className={label}>Tipo de movimiento *</label>
-            <select name="tipo" required className={input}>
-              {OPERABLE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {MOVEMENT_LABELS[t]}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-soft">
-              Transferencia, cuarentena y envío a proveedor necesitan destino.
-            </p>
-          </div>
+          <TipoDestino ubicaciones={locations} />
 
           <div>
             <label className={label}>Productos *</label>
@@ -75,27 +64,14 @@ export default async function NuevoMovimiento({
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={label}>Motivo / N° de pedido</label>
-              <input
-                type="text"
-                name="motivo"
-                placeholder="ej. Pedido #1234, venta mostrador…"
-                className={input}
-              />
-            </div>
-            <div>
-              <label className={label}>Ubicación destino</label>
-              <select name="destino" className={input}>
-                <option value="">Sin destino (egreso)</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className={label}>Motivo / N° de pedido</label>
+            <input
+              type="text"
+              name="motivo"
+              placeholder="ej. Pedido #1234, venta mostrador…"
+              className={input}
+            />
           </div>
 
           <div>

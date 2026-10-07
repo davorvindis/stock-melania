@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getBalances, getMovements, getDailyFlow, getCounts, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
-import { MovementCard } from "@/components/movement-card";
+import { MovementCard, OrigenDestino } from "@/components/movement-card";
 import { HBarChart, DailyFlowChart } from "@/components/charts";
 
 export const dynamic = "force-dynamic";
@@ -149,7 +149,7 @@ export default async function Dashboard() {
                   </td>
                   <td className={`${td} font-medium`}>{fmtQty(m.quantity)}</td>
                   <td className={td}>
-                    {m.from_location?.name ?? "—"} → {m.to_location?.name ?? "—"}
+                    <OrigenDestino m={m} />
                   </td>
                   <td className={td}>{m.actor ?? "—"}</td>
                 </tr>

@@ -1,7 +1,7 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import { getBalances, getMovements, isAvailable } from "./queries";
-import { MOVEMENT_LABELS, LOT_STATUS_LABELS } from "./types";
+import { MOVEMENT_LABELS, LOT_STATUS_LABELS, origenDestino } from "./types";
 
 // Exportación XLSX encapsulada: si algún día cambia la librería, solo se toca este archivo.
 
@@ -69,8 +69,8 @@ export async function movementsWorkbook(): Promise<ArrayBuffer> {
       producto: m.product.name,
       lote: m.lot?.code ?? "",
       cantidad: Number(m.quantity),
-      origen: m.from_location?.name ?? "",
-      destino: m.to_location?.name ?? "",
+      origen: origenDestino(m).origen,
+      destino: origenDestino(m).destino,
       motivo: m.reason ?? "",
       quien: m.actor ?? "",
     });

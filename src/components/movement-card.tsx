@@ -1,11 +1,23 @@
 import type { MovementRow } from "@/lib/queries";
-import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
+import { MOVEMENT_LABELS, fmtQty, fmtDateTime, origenDestino } from "@/lib/types";
 
 export function movementBadgeClass(type: string): string {
   if (type === "RECEIPT") return "bg-emerald-100 text-emerald-800";
   if (type === "REVERSAL") return "bg-stone-200 text-stone-700";
   if (type.includes("QUARANTINE")) return "bg-amber-100 text-amber-800";
   return "bg-blush-100 text-rose-deeper";
+}
+
+// "Depósito → Venta", "Ingreso → Depósito": el lado sin ubicación muestra el tipo
+export function OrigenDestino({ m }: { m: Parameters<typeof origenDestino>[0] }) {
+  const od = origenDestino(m);
+  return (
+    <>
+      <span className={od.origenEsTipo ? "italic text-soft" : ""}>{od.origen}</span>
+      {" → "}
+      <span className={od.destinoEsTipo ? "italic text-soft" : ""}>{od.destino}</span>
+    </>
+  );
 }
 
 export function MovementCard({
@@ -35,7 +47,7 @@ export function MovementCard({
           {fmtQty(m.quantity)} <span className="font-sans text-xs text-soft">{m.product.unit}</span>
         </span>
         <span className="text-sm text-soft">
-          {m.from_location?.name ?? "—"} → {m.to_location?.name ?? "—"}
+          <OrigenDestino m={m} />
         </span>
       </div>
       {(m.reason || m.actor) && (

@@ -4,7 +4,7 @@ import { getMovements, type MovementRow } from "@/lib/queries";
 import { revertirMovimiento } from "@/lib/actions";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, cmp, th, td, input } from "@/components/ui";
-import { MovementCard, movementBadgeClass } from "@/components/movement-card";
+import { MovementCard, movementBadgeClass, OrigenDestino } from "@/components/movement-card";
 
 export const dynamic = "force-dynamic";
 
@@ -155,7 +155,7 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
                     <td className={td}>{m.lot?.code ?? "—"}</td>
                     <td className={`${td} font-medium`}>{fmtQty(m.quantity)}</td>
                     <td className={`${td} whitespace-nowrap`}>
-                      {m.from_location?.name ?? "—"} → {m.to_location?.name ?? "—"}
+                      <OrigenDestino m={m} />
                     </td>
                     <td className={td}>{m.reason ?? "—"}</td>
                     <td className={td}>{m.actor ?? "—"}</td>
