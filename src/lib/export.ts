@@ -1,6 +1,6 @@
 import "server-only";
 import ExcelJS from "exceljs";
-import { getBalances, getMovements, isAvailable } from "./queries";
+import { getBalances, todosLosMovimientos, isAvailable, type FiltrosMovimientos } from "./queries";
 import { MOVEMENT_LABELS, LOT_STATUS_LABELS, origenDestino } from "./types";
 
 // Exportación XLSX encapsulada: si algún día cambia la librería, solo se toca este archivo.
@@ -43,8 +43,8 @@ export async function stockWorkbook(): Promise<ArrayBuffer> {
   return new Uint8Array(await wb.xlsx.writeBuffer()).buffer as ArrayBuffer;
 }
 
-export async function movementsWorkbook(): Promise<ArrayBuffer> {
-  const movements = await getMovements(5000);
+export async function movementsWorkbook(filtros: FiltrosMovimientos = {}): Promise<ArrayBuffer> {
+  const movements = await todosLosMovimientos(filtros);
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Movimientos");
   ws.columns = [

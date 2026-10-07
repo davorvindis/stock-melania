@@ -35,6 +35,83 @@ export type MovementRow = {
   to_location: { name: string } | null;
 };
 
+// ── Historial de movimientos con filtros y paginado (en la base, no en memoria) ──
+
+export type FiltrosMovimientos = {
+  q?: string;
+  tipo?: string;
+  desde?: string; // YYYY-MM-DD (día argentino)
+  hasta?: string;
+  ubicacion?: string;
+  sort?: string;
+  dir?: string;
+};
+
+const MOV_SELECT =
+  "id, occurred_at, type, quantity, actor, reason, reversal_of, product:products(sku, name, unit), lot:lots(code), from_location:locations!inventory_movements_from_location_id_fkey(name), to_location:locations!inventory_movements_to_location_id_fkey(name)";
+
+const esFecha = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const esUuid = (s?: string) => !!s && /^[0-9a-f-]{36}$/i.test(s);
+
+// (async: devuelve el resultado ya ejecutado, con el rango pedido)
+async function consultaMovimientos(f: FiltrosMovimientos, desde: number, hasta: number, opts: { count?: boolean } = {}) {
+  let q = db()
+    .from("inventory_movements")
+    .select(MOV_SELECT, opts.count ? { count: "exact" } : undefined);
+  if (f.tipo) q = q.eq("type", f.tipo);
+  if (esFecha(f.desde)) q = q.gte("occurred_at", `${f.desde}T00:00:00-03:00`);
+  if (esFecha(f.hasta)) q = q.lte("occurred_at", `${f.hasta}T23:59:59.999-03:00`);
+  if (esUuid(f.ubicacion)) q = q.or(`from_location_id.eq.${f.ubicacion},to_location_id.eq.${f.ubicacion}`);
+  const texto = (f.q ?? "").replace(/[,()*%\\]/g, " ").trim();
+  if (texto) {
+    // producto/lote por nombre, SKU o código; motivo y persona directo
+    const [prods, lotes] = await Promise.all([
+      db().from("products").select("id").or(`name.ilike.%${texto}%,sku.ilike.%${texto}%`).limit(500),
+      db().from("lots").select("id").ilike("code", `%${texto}%`).limit(500),
+    ]);
+    const condiciones = [`reason.ilike.%${texto}%`, `actor.ilike.%${texto}%`];
+    const pIds = (prods.data ?? []).map((p) => p.id);
+    const lIds = (lotes.data ?? []).map((l) => l.id);
+    if (pIds.length) condiciones.push(`product_id.in.(${pIds.join(",")})`);
+    if (lIds.length) condiciones.push(`lot_id.in.(${lIds.join(",")})`);
+    q = q.or(condiciones.join(","));
+  }
+  const col = f.sort === "cantidad" ? "quantity" : f.sort === "tipo" ? "type" : "occurred_at";
+  const asc = f.sort ? f.dir !== "desc" : false;
+  q = q.order(col, { ascending: asc });
+  if (col !== "occurred_at") q = q.order("occurred_at", { ascending: false });
+  return await q.range(desde, hasta);
+}
+
+export async function buscarMovimientos(f: FiltrosMovimientos, pagina: number, porPagina: number) {
+  const desde = (pagina - 1) * porPagina;
+  const { data, error, count } = await consultaMovimientos(f, desde, desde + porPagina - 1, { count: true });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as unknown as MovementRow[];
+  // cuáles de esta página ya fueron revertidos
+  const ids = rows.map((m) => m.id);
+  const { data: rev } = ids.length
+    ? await db().from("inventory_movements").select("reversal_of").in("reversal_of", ids)
+    : { data: [] };
+  return {
+    rows,
+    total: count ?? 0,
+    revertidos: new Set((rev ?? []).map((r) => r.reversal_of as string)),
+  };
+}
+
+// todos los que coinciden (para el Excel), en tandas de 1000
+export async function todosLosMovimientos(f: FiltrosMovimientos): Promise<MovementRow[]> {
+  const out: MovementRow[] = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await consultaMovimientos(f, desde, desde + 999);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as unknown as MovementRow[]));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
 export async function getMovements(limit = 100): Promise<MovementRow[]> {
   const { data, error } = await db()
     .from("inventory_movements")

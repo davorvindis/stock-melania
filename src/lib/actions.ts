@@ -31,36 +31,56 @@ const uuid = z.string().uuid();
 
 const ingresoSchema = z.object({
   fecha: z.string().min(1, "Falta la fecha"),
-  producto: uuid,
-  cantidad: numeroPositivo,
-  lote: z.string().trim().optional(),
-  vencimiento: z.string().optional(),
   remito: z.string().trim().optional(),
   factura: z.string().trim().optional(),
-  costo_total: z.string().optional(),
-  costo_unitario: z.string().optional(),
   proveedor: z.string().optional(),
   ubicacion: uuid,
   notas: z.string().trim().optional(),
   idem: z.string().min(8),
 });
 
+// un ingreso (remito) puede traer varios productos: todo se registra junto o nada
 export async function registrarIngreso(formData: FormData) {
   const user = await requireSection("ingresos");
   const back = "/ingresos/nuevo";
   const parsed = ingresoSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) backWithError(back, parsed.error.issues[0].message);
   const d = parsed.data;
-
-  const costoTotal = d.costo_total ? parseFloat(d.costo_total) : null;
-  const costoUnitario = d.costo_unitario ? parseFloat(d.costo_unitario) : null;
-  if (costoTotal !== null && (isNaN(costoTotal) || costoTotal < 0)) backWithError(back, "Costo total inválido");
-  if (costoUnitario !== null && (isNaN(costoUnitario) || costoUnitario < 0)) backWithError(back, "Costo unitario inválido");
-
   exigirUbicacion(user, d.ubicacion, back);
-  const { data: prodTipo } = await db().from("products").select("type").eq("id", d.producto).maybeSingle();
-  if (prodTipo?.type === "KIT") {
-    backWithError(back, "Los kits no llevan stock propio: ingresá stock de sus componentes");
+
+  const productos = formData.getAll("ing_producto").map(String);
+  const cantidades = formData.getAll("ing_cantidad").map(String);
+  const lotes = formData.getAll("ing_lote").map(String);
+  const vencimientos = formData.getAll("ing_vencimiento").map(String);
+  const costos = formData.getAll("ing_costo").map(String);
+
+  const lineas = [];
+  for (let i = 0; i < productos.length; i++) {
+    const n = i + 1;
+    if (!uuid.safeParse(productos[i]).success) backWithError(back, `Producto ${n}: elegí el producto`);
+    const qty = Number(cantidades[i]);
+    if (!(qty > 0)) backWithError(back, `Producto ${n}: la cantidad debe ser mayor a 0`);
+    const costo = costos[i]?.trim() ? Number(costos[i]) : null;
+    if (costo !== null && !(costo >= 0)) backWithError(back, `Producto ${n}: costo inválido`);
+    lineas.push({
+      product_id: productos[i],
+      lot_code: lotes[i]?.trim() || null,
+      expires_on: vencimientos[i] || null,
+      quantity: qty,
+      unit_cost: costo,
+      total_cost: null,
+      location_id: d.ubicacion,
+    });
+  }
+  if (lineas.length === 0) backWithError(back, "Agregá al menos un producto");
+
+  const { data: kits } = await db()
+    .from("products")
+    .select("name")
+    .in("id", lineas.map((l) => l.product_id))
+    .eq("type", "KIT");
+  if (kits?.length) {
+    backWithError(back, `"${kits[0].name}" es un kit: los kits no se ingresan, se arman con sus componentes`);
   }
 
   const { error } = await db().rpc("create_stock_entry", {
@@ -71,20 +91,13 @@ export async function registrarIngreso(formData: FormData) {
     p_notes: d.notas || null,
     p_actor: user.alias,
     p_idem: d.idem,
-    p_lines: [
-      {
-        product_id: d.producto,
-        lot_code: d.lote || null,
-        expires_on: d.vencimiento || null,
-        quantity: d.cantidad,
-        unit_cost: costoUnitario,
-        total_cost: costoTotal,
-        location_id: d.ubicacion,
-      },
-    ],
+    p_lines: lineas,
   });
   if (error) backWithError(back, error.message);
-  okRedirect("/movimientos", "Ingreso registrado");
+  okRedirect(
+    "/movimientos",
+    lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado"
+  );
 }
 
 // ── Movimiento (transferencia / egreso) ─────────────────────────────
