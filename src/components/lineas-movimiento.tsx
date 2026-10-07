@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BuscadorProducto, type OpcionBuscador } from "@/components/buscador-producto";
 
 type Opcion = { value: string; label: string };
 type Ubicacion = { id: string; name: string };
@@ -27,6 +28,11 @@ export function LineasMovimiento({
   const setValor = (key: number, valor: string) =>
     setLineas((l) => l.map((x) => (x.key === key ? { ...x, valor } : x)));
 
+  const todas: OpcionBuscador[] = [
+    ...kits.map((k) => ({ value: `kit:${k.id}`, label: `${k.name} · kit ${k.sku}`, grupo: "Kits (descuentan sus componentes)" })),
+    ...opciones.map((o) => ({ ...o, grupo: kits.length ? "Stock disponible" : undefined })),
+  ];
+
   const selectCls =
     "w-full rounded-lg border border-line bg-white px-3 py-2.5 text-base focus:border-blush focus:outline-none focus:ring-2 focus:ring-blush-100";
 
@@ -38,31 +44,13 @@ export function LineasMovimiento({
           <div key={linea.key} className="rounded-lg border border-blush-100 p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <div className="flex-1">
-                <select
+                <BuscadorProducto
                   name="linea_valor"
-                  required
+                  opciones={todas}
                   value={linea.valor}
-                  onChange={(e) => setValor(linea.key, e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="">Elegir producto…</option>
-                  {kits.length > 0 && (
-                    <optgroup label="Kits (descuentan sus componentes)">
-                      {kits.map((k) => (
-                        <option key={k.id} value={`kit:${k.id}`}>
-                          🎁 {k.name} ({k.sku})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <optgroup label="Stock disponible">
-                    {opciones.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                  onChange={(v) => setValor(linea.key, v)}
+                  placeholder="Buscar producto, SKU o lote…"
+                />
                 {esKit ? (
                   <select name="linea_kit_ubicacion" required className={`${selectCls} mt-2`}>
                     <option value="">¿Desde qué ubicación salen los componentes?</option>

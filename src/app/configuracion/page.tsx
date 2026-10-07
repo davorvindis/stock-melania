@@ -3,6 +3,7 @@ import { requireSection, SECTIONS, can, type Profile } from "@/lib/auth";
 import { crearUsuario, blanquearPin, actualizarUsuario } from "@/lib/auth-actions";
 import { db } from "@/lib/db";
 import { getLocations } from "@/lib/queries";
+import { listarBackups } from "@/lib/backup";
 import { fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
@@ -21,9 +22,10 @@ export default async function Configuracion({
 }) {
   const admin = await requireSection("configuracion");
   const { ok, error } = await searchParams;
-  const [{ data }, ubicaciones] = await Promise.all([
+  const [{ data }, ubicaciones, backups] = await Promise.all([
     db().from("profiles").select("*").order("created_at"),
     getLocations(),
+    listarBackups(),
   ]);
   const usuarios = (data ?? []) as (Profile & { created_at: string })[];
   const nombreUbic = new Map(ubicaciones.map((u) => [u.id, u.name]));
@@ -100,6 +102,43 @@ export default async function Configuracion({
             </SubmitButton>
           </div>
         </form>
+      </Card>
+
+      <Card className="mb-6">
+        <h2 className="mb-1 font-semibold">Copias de seguridad</h2>
+        <p className="mb-3 text-sm text-soft">
+          Todos los días a la madrugada se guarda sola una copia completa de los datos (se conservan
+          30 días). Para estar cubiertos aunque falle Supabase, descargá una copia de vez en cuando
+          (por ejemplo, una vez por semana) y guardala en tu compu o en Drive.
+        </p>
+        <a
+          href="/api/backup/descargar"
+          className="inline-block rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper"
+        >
+          Descargar copia ahora
+        </a>
+        {backups.length > 0 ? (
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-medium text-rose-deep">
+              Copias automáticas guardadas ({backups.length}) · última:{" "}
+              {backups[0].name.replace("backup-", "").replace(".json.gz", "")}
+            </summary>
+            <ul className="mt-2 grid gap-1 text-sm sm:grid-cols-3">
+              {backups.map((b) => (
+                <li key={b.name}>
+                  <a
+                    href={`/api/backup/descargar?archivo=${encodeURIComponent(b.name)}`}
+                    className="text-rose-deep hover:underline"
+                  >
+                    {b.name.replace("backup-", "").replace(".json.gz", "")}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : (
+          <p className="mt-3 text-sm text-soft">Todavía no hay copias automáticas guardadas.</p>
+        )}
       </Card>
 
       <h2 className="mb-2 font-display text-2xl tracking-wide">Usuarios</h2>

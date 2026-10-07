@@ -29,6 +29,8 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isLogin = path === "/login";
+  // backup diario: lo llama el cron de Vercel (sin sesión); se protege en la ruta
+  if (path === "/api/backup") return response;
 
   if (!user && !isLogin) {
     return NextResponse.redirect(new URL("/login", request.url));
