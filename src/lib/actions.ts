@@ -53,6 +53,10 @@ export async function registrarIngreso(formData: FormData) {
   const lotes = formData.getAll("ing_lote").map(String);
   const vencimientos = formData.getAll("ing_vencimiento").map(String);
   const costos = formData.getAll("ing_costo").map(String);
+  const lineasOc = formData.getAll("ing_oc_linea").map(String);
+  // ingreso que recibe una orden de compra (solo quien ve Compras)
+  const ocParam = String(formData.get("oc") ?? "");
+  const oc = can(user, "compras") && uuid.safeParse(ocParam).success ? ocParam : null;
 
   const lineas = [];
   for (let i = 0; i < productos.length; i++) {
@@ -83,7 +87,7 @@ export async function registrarIngreso(formData: FormData) {
     backWithError(back, `"${kits[0].name}" es un kit: los kits no se ingresan, se arman con sus componentes`);
   }
 
-  const { error } = await db().rpc("create_stock_entry", {
+  const { data: entrada, error } = await db().rpc("create_stock_entry", {
     p_entry_date: d.fecha,
     p_supplier: d.proveedor || null,
     p_remito: d.remito || null,
@@ -94,10 +98,53 @@ export async function registrarIngreso(formData: FormData) {
     p_lines: lineas,
   });
   if (error) backWithError(back, error.message);
+
+  if (oc && entrada) {
+    await registrarRecepcionOrden(oc, entrada as string, lineas, lineasOc, user.alias);
+    okRedirect(`/compras/${oc}`, "Ingreso registrado y orden de compra actualizada");
+  }
   okRedirect(
     "/movimientos",
     lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado"
   );
+}
+
+// suma lo recibido a cada línea de la orden y actualiza su estado.
+// (el stock ya quedó registrado por el ingreso; esto es solo seguimiento)
+async function registrarRecepcionOrden(
+  oc: string,
+  entrada: string,
+  lineas: { quantity: number }[],
+  lineasOc: string[],
+  actor: string
+) {
+  const { data: yaVinculada } = await db().from("stock_entries").select("purchase_order_id").eq("id", entrada).maybeSingle();
+  if (yaVinculada?.purchase_order_id) return; // reintento del mismo ingreso: no sumar dos veces
+  await db().from("stock_entries").update({ purchase_order_id: oc }).eq("id", entrada);
+  const { data: actuales } = await db().from("purchase_order_lines").select("id, quantity, received_qty").eq("order_id", oc);
+  const porLinea = new Map<string, number>();
+  lineas.forEach((l, i) => {
+    const id = lineasOc[i];
+    if (id) porLinea.set(id, (porLinea.get(id) ?? 0) + l.quantity);
+  });
+  for (const a of actuales ?? []) {
+    const suma = porLinea.get(a.id);
+    if (suma) {
+      await db().from("purchase_order_lines").update({ received_qty: Number(a.received_qty) + suma }).eq("id", a.id);
+      a.received_qty = Number(a.received_qty) + suma;
+    }
+  }
+  const conCantidad = (actuales ?? []).filter((a) => a.quantity);
+  const completa = conCantidad.length > 0 && conCantidad.every((a) => Number(a.received_qty) >= Number(a.quantity));
+  await db()
+    .from("purchase_orders")
+    .update({ status: completa ? "RECIBIDA" : "RECIBIDA_PARCIAL", updated_at: new Date().toISOString() })
+    .eq("id", oc)
+    .neq("status", "CANCELADA");
+  await db().from("audit_logs").insert({
+    actor, action: "purchase_order:receive", entity: "purchase_orders", entity_id: oc,
+    detail: { ingreso: entrada, completa },
+  });
 }
 
 // ── Movimiento (transferencia / egreso) ─────────────────────────────

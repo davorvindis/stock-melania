@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { BuscadorProducto, type OpcionBuscador } from "@/components/buscador-producto";
 
-type Linea = { key: number; producto: string; cantidad: string; costo: string };
+type Linea = { key: number; producto: string; cantidad: string; costo: string; ocLinea?: string; detalle?: string };
+export type LineaInicial = Omit<Linea, "key">;
 
 const campo =
   "w-full rounded-lg border border-line bg-white px-3 py-2.5 text-base focus:border-blush focus:outline-none focus:ring-2 focus:ring-blush-100";
@@ -14,9 +15,11 @@ const pesos = (n: number) =>
 
 // Líneas del ingreso: un remito puede traer varios productos. Los inputs usan
 // nombres repetidos (ing_*) y el server los lee en orden con getAll.
-export function LineasIngreso({ productos }: { productos: OpcionBuscador[] }) {
-  const [lineas, setLineas] = useState<Linea[]>([{ key: 0, producto: "", cantidad: "", costo: "" }]);
-  const [next, setNext] = useState(1);
+export function LineasIngreso({ productos, inicial }: { productos: OpcionBuscador[]; inicial?: LineaInicial[] }) {
+  const [lineas, setLineas] = useState<Linea[]>(
+    inicial?.length ? inicial.map((l, i) => ({ ...l, key: i })) : [{ key: 0, producto: "", cantidad: "", costo: "" }]
+  );
+  const [next, setNext] = useState(inicial?.length ?? 1);
 
   const set = (key: number, cambios: Partial<Linea>) =>
     setLineas((l) => l.map((x) => (x.key === key ? { ...x, ...cambios } : x)));
@@ -45,6 +48,8 @@ export function LineasIngreso({ productos }: { productos: OpcionBuscador[] }) {
               </button>
             )}
           </div>
+          <input type="hidden" name="ing_oc_linea" value={linea.ocLinea ?? ""} />
+          {linea.detalle && <p className="mb-1 text-xs text-soft">De la orden: {linea.detalle}</p>}
           <BuscadorProducto
             name="ing_producto"
             opciones={productos}

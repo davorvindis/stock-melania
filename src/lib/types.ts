@@ -87,6 +87,10 @@ export function fmtMoney(n: number | string | null): string {
 
 export function fmtDate(d: string | null): string {
   if (!d) return "—";
+  // fecha sin hora (vencimiento, fecha de ingreso/orden): es un día calendario, no
+  // convertir de zona horaria (si no, "2026-09-23" se ve como 22/9 en Argentina)
+  const solo = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (solo) return `${Number(solo[3])}/${Number(solo[2])}/${solo[1]}`;
   return new Date(d).toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
 }
 

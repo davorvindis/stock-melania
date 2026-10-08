@@ -18,12 +18,14 @@ export function BuscadorProducto({
   value,
   onChange,
   placeholder = "Buscar producto…",
+  opcional = false,
 }: {
   name: string;
   opciones: OpcionBuscador[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  opcional?: boolean;
 }) {
   const [texto, setTexto] = useState("");
   const [abierto, setAbierto] = useState(false);
@@ -92,7 +94,7 @@ export function BuscadorProducto({
       <input
         name={name}
         value={value}
-        required
+        required={!opcional}
         onChange={() => {}}
         tabIndex={-1}
         aria-hidden
@@ -109,7 +111,28 @@ export function BuscadorProducto({
           className="flex w-full items-center justify-between gap-2 rounded-lg border border-blush bg-blush-50 px-3 py-2.5 text-left text-base"
         >
           <EtiquetaOpcion label={elegida.label} />
-          <span className="shrink-0 text-xs font-medium text-rose-deep">Cambiar</span>
+          <span className="flex shrink-0 gap-2 text-xs font-medium text-rose-deep">
+            Cambiar
+            {opcional && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.stopPropagation();
+                    onChange("");
+                  }
+                }}
+                className="text-soft hover:text-red-700"
+              >
+                Quitar
+              </span>
+            )}
+          </span>
         </button>
       ) : (
         <input

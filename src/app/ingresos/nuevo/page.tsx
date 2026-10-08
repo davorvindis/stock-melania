@@ -1,20 +1,35 @@
 import { SubmitButton } from "@/components/submit-button";
-import { requireSection, ubicacionFija } from "@/lib/auth";
+import { requireSection, ubicacionFija, can } from "@/lib/auth";
+import Link from "next/link";
+import { getOrden } from "@/lib/compras";
 import { randomUUID } from "crypto";
 import { getProducts, getLocations, getSuppliers } from "@/lib/queries";
 import { registrarIngreso } from "@/lib/actions";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
-import { LineasIngreso } from "@/components/lineas-ingreso";
+import { LineasIngreso, type LineaInicial } from "@/components/lineas-ingreso";
 
 export const dynamic = "force-dynamic";
 
 export default async function NuevoIngreso({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; error?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; oc?: string }>;
 }) {
   const user = await requireSection("ingresos");
-  const { ok, error } = await searchParams;
+  const { ok, error, oc } = await searchParams;
+  // recibir una orden de compra: precarga proveedor y lo que falta recibir
+  const orden =
+    oc && can(user, "compras") && /^[0-9a-f-]{36}$/i.test(oc) ? await getOrden(oc) : null;
+  const inicial: LineaInicial[] = (orden?.lines ?? [])
+    .map((l) => ({ l, falta: l.quantity ? Number(l.quantity) - Number(l.received_qty) : 0 }))
+    .filter(({ l, falta }) => !l.quantity || falta > 0)
+    .map(({ l, falta }) => ({
+      producto: l.product_id ?? "",
+      cantidad: falta > 0 ? String(falta) : "",
+      costo: l.unit_cost != null ? String(l.unit_cost) : "",
+      ocLinea: l.id,
+      detalle: `${l.description}${l.kind ? ` (${l.kind})` : ""}${l.quantity ? ` · pedidas ${l.quantity}, recibidas ${l.received_qty}` : ""}`,
+    }));
   const [products, locations, suppliers] = await Promise.all([
     getProducts(),
     getLocations(),
@@ -29,9 +44,19 @@ export default async function NuevoIngreso({
     <div className="max-w-3xl">
       <PageTitle>Nuevo ingreso de stock</PageTitle>
       <Flash ok={ok} error={error} />
+      {orden && (
+        <p className="mb-3 rounded-lg border border-blush-100 bg-white px-3 py-2 text-sm">
+          Recibiendo la orden de compra a <b>{orden.supplier.name}</b> del {orden.order_date.split("-").reverse().join("/")}.
+          Ajustá las cantidades a lo que llegó realmente y quitá lo que no vino.{" "}
+          <Link href={`/compras/${orden.id}`} className="font-medium text-rose-deep hover:underline">
+            Ver orden
+          </Link>
+        </p>
+      )}
       <Card>
         <form action={registrarIngreso} className="space-y-4">
           <input type="hidden" name="idem" value={randomUUID()} />
+          {orden && <input type="hidden" name="oc" value={orden.id} />}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
@@ -52,7 +77,7 @@ export default async function NuevoIngreso({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className={label}>Proveedor</label>
-              <select name="proveedor" className={input}>
+              <select name="proveedor" defaultValue={orden?.supplier.id ?? ""} className={input}>
                 <option value="">Sin proveedor</option>
                 {suppliers
                   .filter((s) => s.active)
@@ -80,7 +105,7 @@ export default async function NuevoIngreso({
 
           <div>
             <label className={label}>Productos *</label>
-            <LineasIngreso productos={opcionesProductos} />
+            <LineasIngreso productos={opcionesProductos} inicial={inicial} />
           </div>
 
           <div>

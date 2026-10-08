@@ -15,6 +15,8 @@ const items = [
   { href: "/proveedores", label: "Proveedores", section: "proveedores" },
   { href: "/ubicaciones", label: "Ubicaciones", section: "ubicaciones" },
   { href: "/auditoria", label: "Auditoría", section: "auditoria" },
+  { href: "/compras", label: "Órdenes de compra", section: "compras" },
+  { href: "/costos", label: "Costos", section: "costos" },
   { href: "/configuracion", label: "Configuración", section: "configuracion" },
 ];
 
