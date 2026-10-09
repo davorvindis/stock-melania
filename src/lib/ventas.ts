@@ -54,6 +54,17 @@ export function rangoMesActual() {
   return { desde: `${hoy.slice(0, 8)}01`, hasta: hoy };
 }
 
+// últimos n días calendario argentinos (clave YYYY-MM-DD y etiqueta dd/mm), del más viejo a hoy
+export function diasRecientes(n: number): { clave: string; label: string }[] {
+  const clave = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const label = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit" });
+  const ahora = Date.now();
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(ahora - (n - 1 - i) * 86400000);
+    return { clave: clave.format(d), label: label.format(d) };
+  });
+}
+
 export async function getVentas(f: FiltrosVentas): Promise<LineaVenta[]> {
   const tipos = (CANALES[f.canal ?? ""] ?? CANALES[""]).tipos;
   const filas: LineaVenta[] = [];

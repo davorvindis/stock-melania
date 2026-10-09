@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
-import { getBalances, getMovements, getDailyFlow, getCounts, isAvailable } from "@/lib/queries";
+import { requireUser, can } from "@/lib/auth";
+import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/ventas";
+import { getBalances, getMovements, getCounts, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
 import { MovementCard, OrigenDestino } from "@/components/movement-card";
@@ -8,13 +9,34 @@ import { HBarChart, DailyFlowChart } from "@/components/charts";
 
 export const dynamic = "force-dynamic";
 
-export default async function Dashboard() {
-  await requireUser();
-  const [balances, movements, dailyFlow, counts] = await Promise.all([
+const TIPOS_PRODUCTO: [string, string][] = [
+  ["", "Todos"],
+  ["TERMINADO", "Terminado"],
+  ["MONODOSIS", "Monodosis"],
+  ["KIT", "Kits"],
+  ["PACKAGING", "Packaging"],
+  ["INSUMO", "Insumos"],
+  ["ACCESORIO", "Accesorios"],
+  ["GRANEL", "Granel"],
+];
+
+const diaClave = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
+  const user = await requireUser();
+  const { tipo } = await searchParams;
+  const tipoSel = TIPOS_PRODUCTO.some(([v]) => v === tipo) ? tipo! : "";
+  // ventas: el reporte completo para quien tiene la pestaña Ventas; el resto ve las suyas
+  const verTodas = can(user, "ventas");
+  const mes = rangoMesActual();
+  const ultimos14 = diasRecientes(14);
+  const hace14 = ultimos14[0].clave;
+  const desdeVentas = hace14 < mes.desde ? hace14 : mes.desde;
+  const [balances, movements, counts, ventas] = await Promise.all([
     getBalances(),
     getMovements(8),
-    getDailyFlow(14),
     getCounts(),
+    getVentas({ desde: desdeVentas, hasta: mes.hasta, persona: verTodas ? undefined : user.alias }),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -25,11 +47,12 @@ export default async function Dashboard() {
     .reduce((s, b) => s + Number(b.quantity), 0);
 
   // bajo mínimo: suma disponible por producto vs stock mínimo
-  const porProducto = new Map<string, { sku: string; name: string; min: number; qty: number }>();
+  const porProducto = new Map<string, { sku: string; name: string; type: string; min: number; qty: number }>();
   for (const b of balances) {
     const cur = porProducto.get(b.product.id) ?? {
       sku: b.product.sku,
       name: b.product.name,
+      type: b.product.type,
       min: Number(b.product.min_stock),
       qty: 0,
     };
@@ -37,6 +60,37 @@ export default async function Dashboard() {
     porProducto.set(b.product.id, cur);
   }
   const bajoMinimo = [...porProducto.values()].filter((p) => p.min > 0 && p.qty < p.min);
+
+  // disponible por tipo de producto (para los filtros del gráfico)
+  const totalPorTipo = new Map<string, { qty: number; productos: number }>();
+  for (const p of porProducto.values()) {
+    if (p.qty <= 0) continue;
+    const t = totalPorTipo.get(p.type) ?? { qty: 0, productos: 0 };
+    t.qty += p.qty;
+    t.productos += 1;
+    totalPorTipo.set(p.type, t);
+  }
+  const delTipo = [...porProducto.values()]
+    .filter((p) => p.qty > 0 && (!tipoSel || p.type === tipoSel))
+    .sort((a, b) => b.qty - a.qty);
+  const totalTipo = delTipo.reduce((s, p) => s + p.qty, 0);
+
+  // ventas: últimos 14 días por día + resumen del mes
+  const dias = new Map(ultimos14.map((d) => [d.clave, { label: d.label, inQty: 0, outQty: 0 }]));
+  for (const v of ventas) {
+    const b = dias.get(diaClave.format(new Date(v.occurred_at)));
+    if (!b) continue;
+    if (v.type === "SALE") b.inQty += Number(v.quantity);
+    if (v.type === "WHOLESALE_SALE") b.outQty += Number(v.quantity);
+  }
+  const delMes = ventas.filter((v) => diaClave.format(new Date(v.occurred_at)) >= mes.desde);
+  const pedidosMes = agruparPedidos(delMes);
+  const resumenMes = (t: string) => ({
+    u: delMes.filter((v) => v.type === t).reduce((s, v) => s + Number(v.quantity), 0),
+    p: pedidosMes.filter((x) => x.tipo === t).length,
+  });
+  const vMin = resumenMes("SALE");
+  const vMay = resumenMes("WHOLESALE_SALE");
 
   // lotes próximos a vencer (90 días)
   const limite = new Date();
@@ -71,18 +125,61 @@ export default async function Dashboard() {
       )}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <h2 className="mb-3 font-semibold">Disponible por producto</h2>
-          <HBarChart
-            items={[...porProducto.values()]
-              .sort((a, b) => b.qty - a.qty)
-              .slice(0, 8)
-              .map((p) => ({ label: p.name, value: p.qty }))}
-          />
+        <Card className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-semibold">Disponible por producto</h2>
+            <span className="text-sm text-soft">
+              {fmtQty(totalTipo)} u. en {delTipo.length} producto(s)
+            </span>
+          </div>
+          <div className="no-scrollbar mb-3 flex gap-1.5 overflow-x-auto pb-1">
+            {TIPOS_PRODUCTO.filter(([v]) => !v || totalPorTipo.has(v)).map(([v, l]) => (
+              <Link
+                key={v || "todos"}
+                href={v ? `/?tipo=${v}` : "/"}
+                scroll={false}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${
+                  tipoSel === v ? "border-rose-deep bg-rose-deep text-white" : "border-line bg-white text-soft hover:border-blush"
+                }`}
+              >
+                {l}
+                {v && <span className="ml-1 opacity-75">{fmtQty(totalPorTipo.get(v)!.qty)}</span>}
+              </Link>
+            ))}
+          </div>
+          <HBarChart items={delTipo.slice(0, 10).map((p) => ({ label: p.name, value: p.qty }))} />
+          {delTipo.length > 10 && (
+            <Link href="/stock" className="mt-3 inline-block text-sm text-rose-deep hover:underline">
+              y {delTipo.length - 10} producto(s) más: ver en Stock →
+            </Link>
+          )}
         </Card>
-        <Card>
-          <h2 className="mb-3 font-semibold">Entradas vs salidas — últimos 14 días</h2>
-          <DailyFlowChart days={dailyFlow} />
+        <Card className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-semibold">{verTodas ? "Ventas" : "Mis ventas"} — últimos 14 días</h2>
+            {verTodas && (
+              <Link href="/ventas" className="text-sm text-rose-deep hover:underline">
+                Ver reporte →
+              </Link>
+            )}
+          </div>
+          <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-lg bg-blush-50 px-3 py-2">
+              <div className="text-xs text-soft">Minorista este mes</div>
+              <div className="font-display text-2xl leading-none">{fmtQty(vMin.u)} u.</div>
+              <div className="text-xs text-soft">{vMin.p} pedido(s)</div>
+            </div>
+            <div className="rounded-lg bg-blush-50 px-3 py-2">
+              <div className="text-xs text-soft">Mayorista este mes</div>
+              <div className="font-display text-2xl leading-none">{fmtQty(vMay.u)} u.</div>
+              <div className="text-xs text-soft">{vMay.p} pedido(s)</div>
+            </div>
+          </div>
+          <DailyFlowChart
+            days={[...dias.values()]}
+            leyenda={["Minorista", "Mayorista"]}
+            vacio="Sin ventas en los últimos 14 días."
+          />
         </Card>
       </div>
 

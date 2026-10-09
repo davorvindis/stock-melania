@@ -39,12 +39,16 @@ export function HBarChart({
 // Columnas diarias entradas vs salidas (2 series, leyenda siempre presente)
 export function DailyFlowChart({
   days,
+  leyenda = ["Entradas", "Salidas"],
+  vacio = "Sin movimientos en los últimos 14 días.",
 }: {
   days: { label: string; inQty: number; outQty: number }[];
+  leyenda?: [string, string];
+  vacio?: string;
 }) {
   const max = Math.max(...days.map((d) => Math.max(d.inQty, d.outQty)), 1);
   const any = days.some((d) => d.inQty > 0 || d.outQty > 0);
-  if (!any) return <p className="text-sm text-soft">Sin movimientos en los últimos 14 días.</p>;
+  if (!any) return <p className="text-sm text-soft">{vacio}</p>;
   return (
     <div>
       <div className="flex items-end gap-[2px]" style={{ height: 128 }}>
@@ -52,7 +56,7 @@ export function DailyFlowChart({
           <div
             key={d.label}
             className="flex h-full flex-1 items-end justify-center gap-[2px]"
-            title={`${d.label}: entraron ${fmtQty(d.inQty)}, salieron ${fmtQty(d.outQty)}`}
+            title={`${d.label}: ${leyenda[0]} ${fmtQty(d.inQty)}, ${leyenda[1]} ${fmtQty(d.outQty)}`}
           >
             <div
               className="w-full max-w-3 rounded-t-[4px]"
@@ -72,11 +76,11 @@ export function DailyFlowChart({
       <div className="mt-2 flex gap-4 text-xs text-ink">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-[3px]" style={{ background: CHART.in }} />
-          Entradas
+          {leyenda[0]}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-[3px]" style={{ background: CHART.out }} />
-          Salidas
+          {leyenda[1]}
         </span>
       </div>
     </div>

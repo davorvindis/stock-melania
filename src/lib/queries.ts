@@ -4,7 +4,7 @@ import type { LotStatus } from "./types";
 export type BalanceRow = {
   id: string;
   quantity: number;
-  product: { id: string; sku: string; name: string; unit: string; min_stock: number };
+  product: { id: string; sku: string; name: string; unit: string; min_stock: number; type: string };
   lot: { id: string; code: string; status: LotStatus; expires_on: string | null } | null;
   location: { id: string; name: string; is_quarantine: boolean };
 };
@@ -13,7 +13,7 @@ export async function getBalances(): Promise<BalanceRow[]> {
   const { data, error } = await db()
     .from("stock_balances")
     .select(
-      "id, quantity, product:products(id, sku, name, unit, min_stock), lot:lots(id, code, status, expires_on), location:locations(id, name, is_quarantine)"
+      "id, quantity, product:products(id, sku, name, unit, min_stock, type), lot:lots(id, code, status, expires_on), location:locations(id, name, is_quarantine)"
     )
     .gt("quantity", 0)
     .order("quantity", { ascending: false });
