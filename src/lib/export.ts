@@ -2,6 +2,7 @@ import "server-only";
 import ExcelJS from "exceljs";
 import { getBalances, todosLosMovimientos, isAvailable, type FiltrosMovimientos } from "./queries";
 import { MOVEMENT_LABELS, LOT_STATUS_LABELS, origenDestino } from "./types";
+import { getVentas, porProducto, type FiltrosVentas } from "./ventas";
 
 // Exportación XLSX encapsulada: si algún día cambia la librería, solo se toca este archivo.
 
@@ -197,4 +198,53 @@ export async function parseProductosExcel(buf: ArrayBuffer): Promise<{ filas: Fi
     vistos.add(k);
   }
   return { filas, errores };
+}
+
+// ventas filtradas: hoja con cada línea (pedido) y hoja con totales por producto
+export async function ventasWorkbook(filtros: FiltrosVentas): Promise<ArrayBuffer> {
+  const lineas = await getVentas(filtros);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Ventas (detalle)");
+  ws.columns = [
+    { header: "Fecha", key: "fecha", width: 20 },
+    { header: "Canal", key: "canal", width: 16 },
+    { header: "N° de pedido / motivo", key: "pedido", width: 24 },
+    { header: "Quién", key: "quien", width: 14 },
+    { header: "Ubicación", key: "ubicacion", width: 14 },
+    { header: "SKU", key: "sku", width: 18 },
+    { header: "Producto", key: "producto", width: 34 },
+    { header: "Lote", key: "lote", width: 12 },
+    { header: "Cantidad", key: "cantidad", width: 10 },
+    { header: "Observaciones", key: "notas", width: 40 },
+  ];
+  for (const l of lineas) {
+    ws.addRow({
+      fecha: new Date(l.occurred_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+      canal: MOVEMENT_LABELS[l.type] ?? l.type,
+      pedido: l.reason ?? "",
+      quien: l.actor ?? "",
+      ubicacion: l.from_location?.name ?? "",
+      sku: l.product.sku,
+      producto: l.product.name,
+      lote: l.lot?.code ?? "",
+      cantidad: Number(l.quantity),
+      notas: l.notes ?? "",
+    });
+  }
+  styleHeader(ws);
+
+  const ws2 = wb.addWorksheet("Por producto");
+  ws2.columns = [
+    { header: "SKU", key: "sku", width: 18 },
+    { header: "Producto", key: "producto", width: 34 },
+    { header: "Minorista", key: "minorista", width: 12 },
+    { header: "Mayorista", key: "mayorista", width: 12 },
+    { header: "Otras salidas", key: "otras", width: 14 },
+    { header: "Total", key: "total", width: 10 },
+  ];
+  for (const p of porProducto(lineas)) {
+    ws2.addRow({ sku: p.sku, producto: p.name, minorista: p.minorista, mayorista: p.mayorista, otras: p.otras, total: p.total });
+  }
+  styleHeader(ws2);
+  return new Uint8Array(await wb.xlsx.writeBuffer()).buffer as ArrayBuffer;
 }

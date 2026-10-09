@@ -10,6 +10,7 @@ const items = [
   { href: "/ingresos/nuevo", label: "Nuevo ingreso", section: "ingresos" },
   { href: "/movimientos/nuevo", label: "Nuevo movimiento", section: "movimientos" },
   { href: "/movimientos", label: "Movimientos", section: "movimientos" },
+  { href: "/ventas", label: "Ventas", section: "ventas" },
   { href: "/conteos", label: "Conteos", section: "conteos" },
   { href: "/productos", label: "Productos", section: "productos" },
   { href: "/proveedores", label: "Proveedores", section: "proveedores" },

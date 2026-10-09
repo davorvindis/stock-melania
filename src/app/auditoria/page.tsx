@@ -1,7 +1,9 @@
 import { requireSection } from "@/lib/auth";
-import { getAuditLogs } from "@/lib/queries";
-import { fmtDateTime, MOVEMENT_LABELS } from "@/lib/types";
-import { Card, PageTitle, th, td } from "@/components/ui";
+import Link from "next/link";
+import { db } from "@/lib/db";
+import { CATEGORIAS_AUDITORIA, getAuditoria, type AuditRow, type MovimientoAuditado } from "@/lib/queries";
+import { fmtDateTime, fmtQty, MOVEMENT_LABELS, origenDestino } from "@/lib/types";
+import { Card, PageTitle, input } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,29 @@ const ACCIONES: Record<string, string> = {
   "product:create": "Alta de producto",
   "product:update": "Edición de producto",
   "product:import": "Importación de productos",
+  "product:delete": "Baja de producto",
+  "kit:set_components": "Contenido de kit",
+  "lot:create": "Alta de lote",
+  "lot:assign": "Asignación de lote",
+  "lot:expiry": "Corrección de vencimiento",
+  "supplier:create": "Alta de proveedor",
+  "supplier:update": "Edición de proveedor",
+  "supplier:delete": "Baja de proveedor",
+  "location:update": "Edición de ubicación",
+  "location:delete": "Baja de ubicación",
+  "purchase_order:create": "Orden de compra creada",
+  "purchase_order:update": "Orden de compra editada",
+  "purchase_order:delete": "Orden de compra eliminada",
+  "purchase_order:receive": "Orden de compra recibida",
+  "purchase_order:shipment": "Envío de orden registrado",
+  "purchase_order:shipment_delivered": "Envío entregado",
+  "purchase_order:shipment_delete": "Envío eliminado",
+  "cost:create": "Costo agregado",
+  "cost:update": "Costo editado",
+  "cost:delete": "Costo quitado",
+  "cost:copy_month": "Mes de costos creado",
+  "import:compras_costos": "Importación de compras y costos",
+  "backup:download": "Descarga de backup",
 };
 
 function describir(action: string): string {
@@ -55,76 +80,190 @@ function detalleLegible(detail: Record<string, unknown> | null): string {
   return partes.length ? partes.join(" · ") : "—";
 }
 
-export default async function Auditoria({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  await requireSection("auditoria");
-  const { q } = await searchParams;
-  let logs = await getAuditLogs(300);
-  if (q) {
-    const needle = q.toLowerCase();
-    logs = logs.filter(
-      (l) =>
-        describir(l.action).toLowerCase().includes(needle) ||
-        (l.actor ?? "").toLowerCase().includes(needle)
-    );
+type SP = { persona?: string; categoria?: string; desde?: string; hasta?: string; pagina?: string };
+const POR_PAGINA = 50;
+const esUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+
+// todos los datos del detalle en texto (sin UUIDs ni JSON crudo)
+function detalleCompleto(detail: Record<string, unknown> | null): [string, string][] {
+  if (!detail) return [];
+  const out: [string, string][] = [];
+  for (const [k, v] of Object.entries(detail)) {
+    if (v == null || v === "" || esUuid(v)) continue;
+    if (typeof v === "object") {
+      const txt = Array.isArray(v)
+        ? v.map((x) => (typeof x === "object" && x ? Object.values(x).filter((y) => !esUuid(y)).join(" ") : String(x))).join(" · ")
+        : Object.entries(v as Record<string, unknown>).filter(([, y]) => y === true).map(([y]) => y).join(", ");
+      if (txt) out.push([k, txt]);
+    } else out.push([k, String(v)]);
   }
+  return out;
+}
+
+function DetalleMovimiento({ m }: { m: MovimientoAuditado }) {
+  const od = origenDestino(m);
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+      <dt className="text-soft">Producto</dt>
+      <dd>
+        {m.product?.name ?? "—"} {m.product && <span className="font-mono text-xs text-soft">{m.product.sku}</span>}
+      </dd>
+      <dt className="text-soft">Cantidad</dt>
+      <dd>
+        {fmtQty(m.quantity)} {m.product?.unit}
+        {m.lot ? ` · lote ${m.lot.code}` : ""}
+      </dd>
+      <dt className="text-soft">Origen → destino</dt>
+      <dd>
+        {od.origen} → {od.destino}
+      </dd>
+      <dt className="text-soft">N° pedido / motivo</dt>
+      <dd className="font-medium">{m.reason ?? "—"}</dd>
+      {m.notes && (
+        <>
+          <dt className="text-soft">Observaciones</dt>
+          <dd className="whitespace-pre-line">{m.notes}</dd>
+        </>
+      )}
+    </dl>
+  );
+}
+
+function resumen(l: AuditRow, m?: MovimientoAuditado): string {
+  if (m) {
+    const od = origenDestino(m);
+    return [`${fmtQty(m.quantity)} × ${m.product?.name ?? "?"}`, `${od.origen} → ${od.destino}`, m.reason]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return detalleLegible(l.detail);
+}
+
+export default async function Auditoria({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireSection("auditoria");
+  const sp = await searchParams;
+  const pagina = Math.max(1, parseInt(sp.pagina ?? "1", 10) || 1);
+  const [{ rows: logs, total, movimientos }, { data: perfiles }] = await Promise.all([
+    getAuditoria(sp, pagina, POR_PAGINA),
+    db().from("profiles").select("alias").order("alias"),
+  ]);
+  const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  const hayFiltros = !!(sp.persona || sp.categoria || sp.desde || sp.hasta);
+  const qs = (extra: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...sp, ...extra })) if (v) params.set(k, v);
+    const str = params.toString();
+    return str ? `?${str}` : "";
+  };
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <PageTitle>Auditoría</PageTitle>
       <p className="mb-3 text-sm text-soft">
-        Registro permanente de acciones sensibles. No se puede editar ni borrar.
+        Registro permanente de todo lo que se hace en el sistema: quién, cuándo y qué. No se puede editar ni
+        borrar. Para análisis de ventas usá la pestaña{" "}
+        <Link href="/ventas" className="font-medium text-rose-deep hover:underline">
+          Ventas
+        </Link>
+        .
       </p>
-      <form method="get" className="mb-4">
-        <input
-          type="search"
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Filtrar por acción o persona…"
-          className="w-full max-w-sm rounded-lg border border-line bg-white px-3 py-2.5 focus:border-blush focus:outline-none focus:ring-2 focus:ring-blush-100"
-        />
+      <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <select name="persona" defaultValue={sp.persona ?? ""} aria-label="Persona" className={input}>
+          <option value="">Todas las personas</option>
+          {(perfiles ?? []).map((p) => (
+            <option key={p.alias} value={p.alias}>
+              {p.alias}
+            </option>
+          ))}
+        </select>
+        <select name="categoria" defaultValue={sp.categoria ?? ""} aria-label="Tipo de acción" className={input}>
+          <option value="">Todas las acciones</option>
+          {Object.entries(CATEGORIAS_AUDITORIA).map(([k, c]) => (
+            <option key={k} value={k}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <input type="date" name="desde" defaultValue={sp.desde ?? ""} aria-label="Desde" className={input} />
+        <input type="date" name="hasta" defaultValue={sp.hasta ?? ""} aria-label="Hasta" className={input} />
+        <button type="submit" className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
+          Filtrar
+        </button>
       </form>
+      <p className="mb-3 text-sm text-soft">
+        {total.toLocaleString("es-AR")} registro(s)
+        {total > POR_PAGINA && ` · mostrando ${(pagina - 1) * POR_PAGINA + 1}–${Math.min(pagina * POR_PAGINA, total)}`}
+        {hayFiltros && (
+          <>
+            {" · "}
+            <Link href="/auditoria" className="font-medium text-rose-deep hover:underline">
+              Limpiar filtros
+            </Link>
+          </>
+        )}
+      </p>
 
-      <div className="space-y-2 md:hidden">
-        {logs.map((l) => (
-          <div key={l.id} className="rounded-lg border border-blush-100 bg-white p-3">
-            <div className="flex items-center justify-between gap-2 text-sm">
-              <span className="font-medium">{describir(l.action)}</span>
-              <span className="text-xs text-soft">{fmtDateTime(l.at)}</span>
-            </div>
-            <div className="mt-1 text-xs text-soft">
-              {l.actor ?? "—"}
-              {detalleLegible(l.detail) !== "—" ? ` · ${detalleLegible(l.detail)}` : ""}
-            </div>
-          </div>
-        ))}
+      <div className="space-y-1.5">
+        {logs.map((l) => {
+          const m = l.entity_id ? movimientos.get(l.entity_id) : undefined;
+          const extra = m ? [] : detalleCompleto(l.detail);
+          return (
+            <details key={l.id} className="rounded-lg border border-blush-100 bg-white px-3 py-2">
+              <summary className="cursor-pointer list-none">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                  <span className="text-sm">
+                    <span className="font-medium">{describir(l.action)}</span>
+                    <span className="text-soft"> · {l.actor ?? "—"}</span>
+                  </span>
+                  <span className="text-xs text-soft">{fmtDateTime(l.at)}</span>
+                </div>
+                <div className="truncate text-xs text-soft">
+                  {resumen(l, m)} <span className="text-rose-deep">▾</span>
+                </div>
+              </summary>
+              <div className="mt-2 border-t border-blush-100 pt-2">
+                {m ? (
+                  <DetalleMovimiento m={m} />
+                ) : extra.length ? (
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+                    {extra.map(([k, v]) => (
+                      <div key={k} className="contents">
+                        <dt className="capitalize text-soft">{k.replace(/_/g, " ")}</dt>
+                        <dd className="break-words">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="text-sm text-soft">Sin más detalle.</p>
+                )}
+              </div>
+            </details>
+          );
+        })}
+        {logs.length === 0 && (
+          <Card>
+            <p className="text-sm text-soft">No hay registros con estos filtros.</p>
+          </Card>
+        )}
       </div>
 
-      <Card className="hidden md:block">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-line">
-              <th className={th}>Fecha</th>
-              <th className={th}>Acción</th>
-              <th className={th}>Quién</th>
-              <th className={th}>Detalle</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((l) => (
-              <tr key={l.id} className="border-b border-blush-100">
-                <td className={`${td} whitespace-nowrap`}>{fmtDateTime(l.at)}</td>
-                <td className={td}>{describir(l.action)}</td>
-                <td className={td}>{l.actor ?? "—"}</td>
-                <td className={`${td} text-xs text-soft`}>{detalleLegible(l.detail)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {paginas > 1 && (
+        <nav className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm" aria-label="Páginas">
+          {pagina > 1 && (
+            <Link href={`/auditoria${qs({ pagina: String(pagina - 1) })}`} className="rounded-lg border border-line bg-white px-3 py-2 text-rose-deep hover:border-blush">
+              ← Anteriores
+            </Link>
+          )}
+          <span className="px-2 text-soft">
+            Página {pagina} de {paginas}
+          </span>
+          {pagina < paginas && (
+            <Link href={`/auditoria${qs({ pagina: String(pagina + 1) })}`} className="rounded-lg border border-line bg-white px-3 py-2 text-rose-deep hover:border-blush">
+              Siguientes →
+            </Link>
+          )}
+        </nav>
+      )}
     </div>
   );
 }

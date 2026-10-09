@@ -284,6 +284,64 @@ export type AuditRow = {
   detail: Record<string, unknown> | null;
 };
 
+// categorías de la auditoría → prefijos de acción
+export const CATEGORIAS_AUDITORIA: Record<string, { label: string; prefijos: string[] }> = {
+  movimientos: { label: "Movimientos de stock", prefijos: ["movement:"] },
+  ingresos: { label: "Ingresos", prefijos: ["stock_entry:"] },
+  productos: { label: "Productos y kits", prefijos: ["product:", "kit:"] },
+  lotes: { label: "Lotes", prefijos: ["lot:"] },
+  conteos: { label: "Conteos", prefijos: ["count:"] },
+  usuarios: { label: "Usuarios y PIN", prefijos: ["user:"] },
+  compras: { label: "Compras, costos y proveedores", prefijos: ["purchase_order:", "cost:", "supplier:", "import:"] },
+  sistema: { label: "Ubicaciones, backups y sistema", prefijos: ["location:", "backup:", "system:"] },
+};
+
+export type MovimientoAuditado = {
+  id: string;
+  type: string;
+  quantity: number;
+  reason: string | null;
+  notes: string | null;
+  product: { name: string; sku: string; unit: string } | null;
+  lot: { code: string } | null;
+  from_location: { name: string } | null;
+  to_location: { name: string } | null;
+};
+
+export async function getAuditoria(
+  f: { persona?: string; categoria?: string; desde?: string; hasta?: string; q?: string },
+  pagina: number,
+  porPagina: number
+) {
+  let q = db()
+    .from("audit_logs")
+    .select("id, at, actor, action, entity, entity_id, detail", { count: "exact" })
+    .order("at", { ascending: false });
+  if (f.persona) q = q.eq("actor", f.persona);
+  const cat = f.categoria ? CATEGORIAS_AUDITORIA[f.categoria] : null;
+  if (cat) q = q.or(cat.prefijos.map((p) => `action.like.${p}*`).join(","));
+  if (f.desde && /^\d{4}-\d{2}-\d{2}$/.test(f.desde)) q = q.gte("at", `${f.desde}T00:00:00-03:00`);
+  if (f.hasta && /^\d{4}-\d{2}-\d{2}$/.test(f.hasta)) q = q.lte("at", `${f.hasta}T23:59:59.999-03:00`);
+  const desde = (pagina - 1) * porPagina;
+  const { data, error, count } = await q.range(desde, desde + porPagina - 1);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as unknown as AuditRow[];
+
+  // detalle de los movimientos de esta página (producto, ubicaciones, N° de pedido…)
+  const movIds = rows.filter((r) => r.action.startsWith("movement:") && r.entity_id).map((r) => r.entity_id!);
+  const movimientos = new Map<string, MovimientoAuditado>();
+  if (movIds.length) {
+    const { data: movs } = await db()
+      .from("inventory_movements")
+      .select(
+        "id, type, quantity, reason, notes, product:products(name, sku, unit), lot:lots(code), from_location:locations!inventory_movements_from_location_id_fkey(name), to_location:locations!inventory_movements_to_location_id_fkey(name)"
+      )
+      .in("id", movIds);
+    for (const m of (movs ?? []) as unknown as MovimientoAuditado[]) movimientos.set(m.id, m);
+  }
+  return { rows, total: count ?? 0, movimientos };
+}
+
 export async function getAuditLogs(limit = 200): Promise<AuditRow[]> {
   const { data, error } = await db()
     .from("audit_logs")
