@@ -18,6 +18,8 @@ const items = [
   { href: "/auditoria", label: "Auditoría", section: "auditoria" },
   { href: "/compras", label: "Órdenes de compra", section: "compras" },
   { href: "/costos", label: "Costos", section: "costos" },
+  { href: "/faltas", label: "Faltas y horas", section: "faltas" },
+  { href: "/vacaciones", label: "Vacaciones", section: "vacaciones" },
   { href: "/configuracion", label: "Configuración", section: "configuracion" },
 ];
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser, can } from "@/lib/auth";
 import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/ventas";
+import { contarPendientesVacaciones } from "@/lib/personal";
 import { getBalances, getMovements, getCounts, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -32,11 +33,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const ultimos14 = diasRecientes(14);
   const hace14 = ultimos14[0].clave;
   const desdeVentas = hace14 < mes.desde ? hace14 : mes.desde;
-  const [balances, movements, counts, ventas] = await Promise.all([
+  const apruebaVacaciones = user.role === "ADMIN" && can(user, "vacaciones");
+  const [balances, movements, counts, ventas, vacPendientes] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
     getVentas({ desde: desdeVentas, hasta: mes.hasta, persona: verTodas ? undefined : user.alias }),
+    apruebaVacaciones ? contarPendientesVacaciones() : Promise.resolve(0),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -109,6 +112,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <Stat label="En cuarentena / bloqueado" value={fmtQty(enCuarentena)} alert={enCuarentena > 0} />
         <Stat label="Productos bajo mínimo" value={bajoMinimo.length} alert={bajoMinimo.length > 0} />
       </div>
+
+      {vacPendientes > 0 && (
+        <Card className="mt-4 border-amber-200">
+          <p className="text-sm">
+            <b className="text-amber-800">
+              {vacPendientes} solicitud(es) de vacaciones para aprobar.
+            </b>{" "}
+            <Link href="/vacaciones" className="font-medium text-rose-deep hover:underline">
+              Revisar →
+            </Link>
+          </p>
+        </Card>
+      )}
 
       {conteosARevisar.length > 0 && (
         <Card className="mt-4 border-amber-200">
