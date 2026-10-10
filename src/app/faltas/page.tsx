@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { CERTIFICADO, TIPOS_REGISTRO, fmtHoras, getEmpleados, getRegistros } from "@/lib/personal";
-import { adjuntarCertificado, bajaEmpleado, crearEmpleado, eliminarRegistro, reactivarEmpleado, registrarFalta } from "@/lib/personal-actions";
+import { adjuntarCertificado, bajaEmpleado, crearEmpleado, eliminarRegistro, eliminarRegistros, reactivarEmpleado, registrarFalta } from "@/lib/personal-actions";
+import { SeleccionMasiva } from "@/components/seleccion-masiva";
 import { nombreMes } from "@/lib/compras";
 import { fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, th, td } from "@/components/ui";
@@ -42,6 +43,11 @@ export default async function Faltas({ searchParams }: { searchParams: Promise<S
   if (sp.empleado) lista = lista.filter((r) => r.employee.id === sp.empleado);
   if (sp.mes && /^\d{4}-\d{2}$/.test(sp.mes)) lista = lista.filter((r) => r.record_date.startsWith(sp.mes!));
   const mesesLista = [...new Set(registros.map((r) => r.record_date.slice(0, 7)))].sort().reverse();
+  // para volver a esta misma vista filtrada después de cada acción
+  const filtros = new URLSearchParams();
+  if (sp.empleado) filtros.set("empleado", sp.empleado);
+  if (sp.mes) filtros.set("mes", sp.mes);
+  const volver = filtros.toString() ? `/faltas?${filtros.toString()}` : "/faltas";
 
   return (
     <div>
@@ -68,6 +74,7 @@ export default async function Faltas({ searchParams }: { searchParams: Promise<S
         <details open={!!sp.error}>
           <summary className="cursor-pointer font-semibold text-rose-deep">+ Registrar falta, llegada tarde, horas a favor o recupero</summary>
           <form action={registrarFalta} className="mt-3 grid gap-3 sm:grid-cols-3">
+            <input type="hidden" name="volver" value={volver} />
             <div>
               <label className={label}>Empleado *</label>
               <select name="empleado" required defaultValue={sp.empleado ?? ""} className={input}>
@@ -215,14 +222,25 @@ export default async function Faltas({ searchParams }: { searchParams: Promise<S
         )}
       </form>
 
+      <SeleccionMasiva formId="borrar-varios" action={eliminarRegistros} volver={volver} total={lista.length} />
       <div className="space-y-2">
         {lista.map((r) => (
           <div key={r.id} className="rounded-xl border border-line bg-white p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  name="registros"
+                  value={r.id}
+                  form="borrar-varios"
+                  aria-label={`Seleccionar registro de ${r.employee.name} del ${fmtDate(r.record_date)}`}
+                  className="mt-1 h-4 w-4 shrink-0 accent-rose-deep"
+                />
+                <div>
                 <span className="font-semibold">{r.employee.name}</span>
                 <span className="text-sm text-soft"> · {fmtDate(r.record_date)} · {TIPOS_REGISTRO[r.kind] ?? r.kind}</span>
                 {r.imported && <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">del Excel</span>}
+                </div>
               </div>
               <span className={`font-semibold ${claseSaldo(r.minutes)}`}>{r.minutes ? fmtHoras(r.minutes) : ""}</span>
             </div>
@@ -241,6 +259,7 @@ export default async function Faltas({ searchParams }: { searchParams: Promise<S
                   <summary className="cursor-pointer font-medium text-rose-deep">📎 Adjuntar certificado</summary>
                   <form action={adjuntarCertificado} className="mt-2 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="registro" value={r.id} />
+                    <input type="hidden" name="volver" value={volver} />
                     <input type="file" name="archivo" required accept="application/pdf,image/*" className="text-xs" />
                     <SubmitButton className="rounded-lg bg-rose-deep px-3 py-1.5 text-xs font-semibold text-white">Subir</SubmitButton>
                   </form>
@@ -249,6 +268,7 @@ export default async function Faltas({ searchParams }: { searchParams: Promise<S
               {r.created_by && <span className="text-soft">cargó {r.created_by}</span>}
               <form action={eliminarRegistro} className="ml-auto">
                 <input type="hidden" name="registro" value={r.id} />
+                <input type="hidden" name="volver" value={volver} />
                 <SubmitButton className="text-soft hover:text-red-700">Eliminar</SubmitButton>
               </form>
             </div>

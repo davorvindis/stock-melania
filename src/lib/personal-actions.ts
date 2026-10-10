@@ -17,6 +17,12 @@ function volverOk(path: string, msg: string): never {
 }
 
 const uuid = z.string().uuid();
+
+// vuelve a la vista de Faltas con los mismos filtros (empleado, mes) que tenía la pantalla
+function volverAFaltas(formData: FormData): string {
+  const v = String(formData.get("volver") ?? "");
+  return /^\/faltas(\?[\w=&%-]*)?$/.test(v) ? v : "/faltas";
+}
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida");
 const MAX_ARCHIVO = 4 * 1024 * 1024;
 const TIPOS_ARCHIVO: Record<string, string> = {
@@ -60,7 +66,7 @@ const registroSchema = z.object({
 
 export async function registrarFalta(formData: FormData) {
   const user = await requireSection("faltas");
-  const back = "/faltas";
+  const back = volverAFaltas(formData);
   const parsed = registroSchema.safeParse({
     ...Object.fromEntries([...formData.entries()].filter(([, v]) => typeof v === "string")),
   });
@@ -97,7 +103,7 @@ export async function registrarFalta(formData: FormData) {
 
 export async function adjuntarCertificado(formData: FormData) {
   const user = await requireSection("faltas");
-  const back = "/faltas";
+  const back = volverAFaltas(formData);
   const id = uuid.safeParse(String(formData.get("registro") ?? ""));
   if (!id.success) volverConError(back, "Registro inválido");
   const path = await subirCertificado(formData.get("archivo"), back);
@@ -115,7 +121,7 @@ export async function adjuntarCertificado(formData: FormData) {
 
 export async function eliminarRegistro(formData: FormData) {
   const user = await requireSection("faltas");
-  const back = "/faltas";
+  const back = volverAFaltas(formData);
   const id = uuid.safeParse(String(formData.get("registro") ?? ""));
   if (!id.success) volverConError(back, "Registro inválido");
   const { data: r } = await db().from("time_records").select("record_date, kind, minutes, certificate_path").eq("id", id.data).maybeSingle();
@@ -127,6 +133,23 @@ export async function eliminarRegistro(formData: FormData) {
     detail: { fecha: r?.record_date, tipo: r?.kind, minutos: r?.minutes },
   });
   volverOk(back, "Registro eliminado");
+}
+
+export async function eliminarRegistros(formData: FormData) {
+  const user = await requireSection("faltas");
+  const back = volverAFaltas(formData);
+  const ids = formData.getAll("registros").map(String).filter((v) => uuid.safeParse(v).success);
+  if (ids.length === 0) volverConError(back, "Seleccioná al menos un registro");
+  const { data: filas } = await db().from("time_records").select("id, record_date, kind, minutes, certificate_path").in("id", ids);
+  const { error } = await db().from("time_records").delete().in("id", ids);
+  if (error) volverConError(back, error.message);
+  const archivos = (filas ?? []).map((f) => f.certificate_path).filter((x): x is string => !!x);
+  if (archivos.length) await db().storage.from(BUCKET_CERTIFICADOS).remove(archivos);
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "time_record:delete_many", entity: "time_records", entity_id: null,
+    detail: { cantidad: ids.length, registros: (filas ?? []).map((f) => ({ fecha: f.record_date, tipo: f.kind, minutos: f.minutes })) },
+  });
+  volverOk(back, `${ids.length} registro(s) eliminado(s)`);
 }
 
 // ── Vacaciones ──────────────────────────────────────────────────────
@@ -272,7 +295,7 @@ export async function guardarDiasVacaciones(formData: FormData) {
 
 export async function crearEmpleado(formData: FormData) {
   const user = await requireSection("faltas");
-  const back = "/faltas";
+  const back = volverAFaltas(formData);
   const nombre = String(formData.get("nombre") ?? "").trim();
   if (nombre.length < 2) volverConError(back, "Escribí el nombre del empleado");
   const { data, error } = await db().from("employees").insert({ name: nombre }).select("id").single();
@@ -286,7 +309,7 @@ export async function crearEmpleado(formData: FormData) {
 // si tiene historial se da de baja (queda guardado); si no, se elimina
 export async function bajaEmpleado(formData: FormData) {
   const user = await requireSection("faltas");
-  const back = "/faltas";
+  const back = volverAFaltas(formData);
   const id = uuid.safeParse(String(formData.get("empleado") ?? ""));
   if (!id.success) volverConError(back, "Empleado inválido");
   const { data: emp } = await db().from("employees").select("name").eq("id", id.data).maybeSingle();
@@ -310,7 +333,7 @@ export async function bajaEmpleado(formData: FormData) {
 
 export async function reactivarEmpleado(formData: FormData) {
   const user = await requireSection("faltas");
-  const back = "/faltas";
+  const back = volverAFaltas(formData);
   const id = uuid.safeParse(String(formData.get("empleado") ?? ""));
   if (!id.success) volverConError(back, "Empleado inválido");
   const { error } = await db().from("employees").update({ active: true }).eq("id", id.data);
