@@ -1,6 +1,6 @@
 import { requireSection } from "@/lib/auth";
 import Link from "next/link";
-import { getBalances, getLocations, getProducts, isAvailable, type BalanceRow } from "@/lib/queries";
+import { filtrarBalances, getBalances, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
 import { ajustarStock } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
@@ -162,6 +162,8 @@ function DetalleFilas({ filas, puedeAjustar }: { filas: BalanceRow[]; puedeAjust
   );
 }
 
+const TIPOS_PRODUCTO = TIPOS_PRODUCTO_LABEL;
+
 type SP = {
   ok?: string;
   error?: string;
@@ -169,6 +171,7 @@ type SP = {
   ubicacion?: string;
   disp?: string;
   lote?: string;
+  tipo?: string;
   vista?: string;
   sort?: string;
   dir?: string;
@@ -182,7 +185,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
 
   // productos activos sin stock en ninguna ubicación (no tienen renglón en balances)
   const conStock = new Set(balances.map((b) => b.product.id));
-  let sinStock = productos.filter((p) => p.active && !conStock.has(p.id));
+  let sinStock = productos.filter((p) => p.active && !conStock.has(p.id) && (!sp.tipo || p.type === sp.tipo));
   if (sp.q) {
     const needle = sp.q.toLowerCase();
     sinStock = sinStock.filter(
@@ -191,24 +194,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   }
   const mostrarSinStock = (!sp.disp || sp.disp === "cero") && !sp.lote;
 
-  let rows = balances;
-  if (sp.q) {
-    const needle = sp.q.toLowerCase();
-    rows = rows.filter(
-      (b) =>
-        b.product.name.toLowerCase().includes(needle) ||
-        b.product.sku.toLowerCase().includes(needle) ||
-        (b.lot?.code ?? "").toLowerCase().includes(needle)
-    );
-  }
-  if (sp.lote) {
-    const l = sp.lote.trim().toLowerCase();
-    rows = rows.filter((b) => (l === "sin" ? !b.lot : (b.lot?.code ?? "").toLowerCase().includes(l)));
-  }
-  if (sp.ubicacion) rows = rows.filter((b) => b.location.id === sp.ubicacion);
-  if (sp.disp === "si") rows = rows.filter(isAvailable);
-  if (sp.disp === "no") rows = rows.filter((b) => !isAvailable(b));
-  if (sp.disp === "cero") rows = [];
+  let rows = filtrarBalances(balances, sp);
 
   const key = (b: BalanceRow, col: string): string | number => {
     switch (col) {
@@ -296,7 +282,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <PageTitle>Stock</PageTitle>
         <a
-          href="/api/export/stock"
+          href={`/api/export/stock${(() => {
+            const p = new URLSearchParams();
+            for (const k of ["q", "lote", "ubicacion", "tipo", "disp"] as const) if (sp[k]) p.set(k, sp[k]!);
+            return p.toString() ? `?${p.toString()}` : "";
+          })()}`}
           className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush"
         >
           Descargar Excel
@@ -318,7 +308,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         </Link>
       </div>
 
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-6">
+      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {porLote && <input type="hidden" name="vista" value="lote" />}
         <input
           type="search"
@@ -335,6 +325,14 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           aria-label="Filtrar por lote"
           className={input}
         />
+        <select name="tipo" defaultValue={sp.tipo ?? ""} aria-label="Tipo de producto" className={input}>
+          <option value="">Todos los tipos</option>
+          {Object.entries(TIPOS_PRODUCTO).map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
         <select name="ubicacion" defaultValue={sp.ubicacion ?? ""} className={input}>
           <option value="">Todas las ubicaciones</option>
           {locations.map((l) => (

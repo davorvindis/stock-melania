@@ -1,6 +1,17 @@
 import "server-only";
 import ExcelJS from "exceljs";
-import { getBalances, todosLosMovimientos, isAvailable, type FiltrosMovimientos } from "./queries";
+import {
+  filtrarBalances,
+  getBalances,
+  getProducts,
+  isAvailable,
+  productosSinStock,
+  todosLosMovimientos,
+  TIPOS_PRODUCTO_LABEL,
+  type BalanceRow,
+  type FiltrosMovimientos,
+  type FiltrosStock,
+} from "./queries";
 import { MOVEMENT_LABELS, LOT_STATUS_LABELS, origenDestino } from "./types";
 import { getVentas, porProducto, type FiltrosVentas } from "./ventas";
 
@@ -12,13 +23,50 @@ function styleHeader(ws: ExcelJS.Worksheet) {
   row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9E8E6" } };
 }
 
-export async function stockWorkbook(): Promise<ArrayBuffer> {
-  const balances = await getBalances();
+// stock con los mismos filtros que la pantalla: total por producto, detalle y productos en 0
+export async function stockWorkbook(f: FiltrosStock = {}): Promise<ArrayBuffer> {
+  const [balances, productos] = await Promise.all([getBalances(), getProducts()]);
+  const filas = filtrarBalances(balances, f);
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Stock");
+
+  const resumen = wb.addWorksheet("Por producto");
+  resumen.columns = [
+    { header: "SKU", key: "sku", width: 18 },
+    { header: "Producto", key: "producto", width: 34 },
+    { header: "Tipo", key: "tipo", width: 18 },
+    { header: "Total", key: "total", width: 12 },
+    { header: "Disponible", key: "disponible", width: 12 },
+    { header: "Unidad", key: "unidad", width: 10 },
+    { header: "Lotes", key: "lotes", width: 40 },
+  ];
+  const porProducto = new Map<string, { b: BalanceRow; total: number; disp: number; lotes: Map<string, number> }>();
+  for (const b of filas) {
+    const g = porProducto.get(b.product.id) ?? { b, total: 0, disp: 0, lotes: new Map() };
+    const q = Number(b.quantity);
+    g.total += q;
+    if (isAvailable(b)) g.disp += q;
+    const l = b.lot?.code ?? "Sin lote";
+    g.lotes.set(l, (g.lotes.get(l) ?? 0) + q);
+    porProducto.set(b.product.id, g);
+  }
+  for (const g of [...porProducto.values()].sort((x, y) => y.total - x.total)) {
+    resumen.addRow({
+      sku: g.b.product.sku,
+      producto: g.b.product.name,
+      tipo: TIPOS_PRODUCTO_LABEL[g.b.product.type] ?? g.b.product.type,
+      total: g.total,
+      disponible: g.disp,
+      unidad: g.b.product.unit,
+      lotes: [...g.lotes.entries()].map(([l, q]) => `${l}: ${q}`).join(" · "),
+    });
+  }
+  styleHeader(resumen);
+
+  const ws = wb.addWorksheet("Detalle por lote y ubicación");
   ws.columns = [
     { header: "SKU", key: "sku", width: 18 },
     { header: "Producto", key: "producto", width: 32 },
+    { header: "Tipo", key: "tipo", width: 18 },
     { header: "Lote", key: "lote", width: 14 },
     { header: "Estado lote", key: "estado", width: 14 },
     { header: "Vencimiento", key: "vence", width: 14 },
@@ -27,10 +75,11 @@ export async function stockWorkbook(): Promise<ArrayBuffer> {
     { header: "Unidad", key: "unidad", width: 10 },
     { header: "Disponible", key: "disponible", width: 12 },
   ];
-  for (const b of balances) {
+  for (const b of filas) {
     ws.addRow({
       sku: b.product.sku,
       producto: b.product.name,
+      tipo: TIPOS_PRODUCTO_LABEL[b.product.type] ?? b.product.type,
       lote: b.lot?.code ?? "",
       estado: b.lot ? LOT_STATUS_LABELS[b.lot.status] : "",
       vence: b.lot?.expires_on ?? "",
@@ -41,6 +90,18 @@ export async function stockWorkbook(): Promise<ArrayBuffer> {
     });
   }
   styleHeader(ws);
+
+  const ceros = productosSinStock(productos, balances, f);
+  if (ceros.length) {
+    const z = wb.addWorksheet("Productos en 0");
+    z.columns = [
+      { header: "SKU", key: "sku", width: 18 },
+      { header: "Producto", key: "producto", width: 34 },
+      { header: "Tipo", key: "tipo", width: 18 },
+    ];
+    for (const p of ceros) z.addRow({ sku: p.sku, producto: p.name, tipo: TIPOS_PRODUCTO_LABEL[p.type] ?? p.type });
+    styleHeader(z);
+  }
   return new Uint8Array(await wb.xlsx.writeBuffer()).buffer as ArrayBuffer;
 }
 

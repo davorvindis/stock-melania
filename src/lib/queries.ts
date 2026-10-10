@@ -153,6 +153,60 @@ export async function getSuppliers() {
 }
 
 // disponible = stock en lotes liberados fuera de cuarentena
+export type FiltrosStock = { q?: string; lote?: string; ubicacion?: string; tipo?: string; disp?: string };
+
+export const TIPOS_PRODUCTO_LABEL: Record<string, string> = {
+  TERMINADO: "Producto terminado",
+  MONODOSIS: "Monodosis",
+  KIT: "Kits",
+  PACKAGING: "Packaging",
+  INSUMO: "Insumos",
+  ACCESORIO: "Accesorios",
+  GRANEL: "Granel",
+};
+
+// mismos filtros para la pantalla de Stock y su Excel
+export function filtrarBalances(balances: BalanceRow[], f: FiltrosStock): BalanceRow[] {
+  let rows = balances;
+  if (f.q) {
+    const needle = f.q.toLowerCase();
+    rows = rows.filter(
+      (b) =>
+        b.product.name.toLowerCase().includes(needle) ||
+        b.product.sku.toLowerCase().includes(needle) ||
+        (b.lot?.code ?? "").toLowerCase().includes(needle)
+    );
+  }
+  if (f.lote) {
+    const l = f.lote.trim().toLowerCase();
+    rows = rows.filter((b) => (l === "sin" ? !b.lot : (b.lot?.code ?? "").toLowerCase().includes(l)));
+  }
+  if (f.ubicacion) rows = rows.filter((b) => b.location.id === f.ubicacion);
+  if (f.tipo) rows = rows.filter((b) => b.product.type === f.tipo);
+  if (f.disp === "si") rows = rows.filter(isAvailable);
+  if (f.disp === "no") rows = rows.filter((b) => !isAvailable(b));
+  if (f.disp === "cero") rows = [];
+  return rows;
+}
+
+// productos activos sin stock en ninguna ubicación (con los filtros que aplican)
+export function productosSinStock(
+  productos: { id: string; sku: string; name: string; type: string; unit: string; active: boolean }[],
+  balances: BalanceRow[],
+  f: FiltrosStock
+) {
+  if ((f.disp && f.disp !== "cero") || f.lote) return [];
+  const conStock = new Set(balances.map((b) => b.product.id));
+  const needle = (f.q ?? "").toLowerCase();
+  return productos.filter(
+    (p) =>
+      p.active &&
+      !conStock.has(p.id) &&
+      (!f.tipo || p.type === f.tipo) &&
+      (!needle || p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle))
+  );
+}
+
 export function isAvailable(b: BalanceRow): boolean {
   const lotOk = !b.lot || b.lot.status === "ACTIVE";
   return lotOk && !b.location.is_quarantine;
