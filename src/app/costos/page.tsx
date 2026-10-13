@@ -12,6 +12,7 @@ import {
   type FilaCosto,
 } from "@/lib/compras";
 import { copiarMes } from "@/lib/compras-actions";
+import { conPrecioDeLista } from "@/lib/precios";
 import { fmtMoney } from "@/lib/types";
 import { Card, Flash, PageTitle, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -52,8 +53,8 @@ export default async function Costos({
   const periodo = pedido ?? periodos[0] ?? null;
   const anterior = periodo ? periodos.find((p) => p < periodo) ?? null : null;
   const [filas, previas, productos, proveedores] = await Promise.all([
-    periodo ? getCostos(periodo) : Promise.resolve([] as FilaCosto[]),
-    anterior ? getCostos(anterior) : Promise.resolve([] as FilaCosto[]),
+    periodo ? getCostos(periodo).then(conPrecioDeLista) : Promise.resolve([] as (FilaCosto & { precio_de_lista: boolean })[]),
+    anterior ? getCostos(anterior).then(conPrecioDeLista) : Promise.resolve([] as (FilaCosto & { precio_de_lista: boolean })[]),
     getProducts(),
     getSuppliers(),
   ]);
@@ -169,6 +170,7 @@ export default async function Costos({
                       <td className={`${td} whitespace-nowrap`}>
                         {fmtMoney(precio)}
                         <Variacion v={variacion(precio, p?.sale_price != null ? Number(p.sale_price) : null)} invertir />
+                        {f.precio_de_lista && <span className="block text-[11px] text-soft">de la lista de precios</span>}
                       </td>
                       <td className={`${td} whitespace-nowrap`}>{precio != null ? fmtMoney(precio - costo) : "—"}</td>
                       <td className={`${td} ${claseMargen(margen(precio, costo))}`}>{pct(margen(precio, costo))}</td>

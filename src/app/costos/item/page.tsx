@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { COMPONENTES, getHistorialItem, margen, nombreMes, variacion } from "@/lib/compras";
 import { fmtMoney } from "@/lib/types";
+import { conPrecioDeLista } from "@/lib/precios";
 import { Card, PageTitle, th, td } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +63,7 @@ function Grafico({ puntos }: { puntos: { label: string; costo: number; precio: n
 export default async function HistorialItem({ searchParams }: { searchParams: Promise<{ nombre?: string }> }) {
   await requireSection("costos");
   const { nombre } = await searchParams;
-  const filas = nombre ? await getHistorialItem(nombre) : [];
+  const filas = nombre ? await conPrecioDeLista(await getHistorialItem(nombre)) : [];
   const corto = (p: string) => {
     const [yy, mm] = p.split("-");
     return `${mm}/${yy.slice(2)}`;

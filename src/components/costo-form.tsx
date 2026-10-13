@@ -68,7 +68,9 @@ export function CostoForm({
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <div>
-            <label className={etiqueta}>Precio de venta minorista ($)</label>
+            <label className={etiqueta}>
+              Precio de venta minorista ($){fila?.product_id ? " — si el producto tiene precio en la lista, se usa ese" : ""}
+            </label>
             <input type="number" name="precio" min="0" step="0.01" defaultValue={fila?.sale_price ?? ""} className={campo} />
           </div>
           <div>
