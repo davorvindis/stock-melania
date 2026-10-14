@@ -414,9 +414,12 @@ export async function abrirConteo(formData: FormData) {
   const ubicacion = uuid.safeParse(String(formData.get("ubicacion") ?? ""));
   if (!ubicacion.success) backWithError(back, "Elegí una ubicación");
   exigirUbicacion(user, ubicacion.data, back);
+  const TIPOS_VALIDOS = ["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO", "KIT"];
+  const tipos = formData.getAll("tipos").map(String).filter((t) => TIPOS_VALIDOS.includes(t));
   const { data, error } = await db().rpc("open_count", {
     p_location: ubicacion.data,
     p_actor: user.alias,
+    p_types: tipos.length ? tipos : null,
   });
   if (error) backWithError(back, error.message);
   revalidatePath("/", "layout");
@@ -427,7 +430,9 @@ export async function guardarConteo(formData: FormData) {
   const user = await requireSection("conteos");
   const countId = String(formData.get("conteo") ?? "");
   const cerrar = formData.get("cerrar") === "1";
-  const back = `/conteos/${countId}`;
+  const tipo = String(formData.get("tipo") ?? "");
+  // al guardar avance se vuelve con el mismo filtro de tipo
+  const back = `/conteos/${countId}${/^[A-Z]+$/.test(tipo) && !cerrar ? `?tipo=${tipo}` : ""}`;
   if (!countId) backWithError("/conteos", "Conteo inválido");
 
   const lines: { line_id: string; counted: string }[] = [];

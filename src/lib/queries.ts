@@ -285,6 +285,7 @@ export type CountRow = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_reason: string | null;
+  product_types: string[] | null;
   location: { id: string; name: string };
 };
 
@@ -292,14 +293,14 @@ export type CountLine = {
   id: string;
   expected: number;
   counted: number | null;
-  product: { sku: string; name: string; unit: string };
+  product: { id: string; sku: string; name: string; unit: string; type: string };
   lot: { code: string } | null;
 };
 
 export async function getCounts(): Promise<CountRow[]> {
   const { data, error } = await db()
     .from("inventory_counts")
-    .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, location:locations(id, name)")
+    .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, product_types, location:locations(id, name)")
     .order("opened_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as CountRow[];
@@ -310,20 +311,48 @@ export async function getCountDetail(id: string) {
   const [count, lines] = await Promise.all([
     cli
       .from("inventory_counts")
-      .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, location:locations(id, name)")
+      .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, product_types, location:locations(id, name)")
       .eq("id", id)
       .single(),
     cli
       .from("inventory_count_lines")
-      .select("id, expected, counted, product:products(sku, name, unit), lot:lots(code)")
+      .select("id, expected, counted, product:products(id, sku, name, unit, type), lot:lots(code)")
       .eq("count_id", id)
       .order("id"),
   ]);
   if (count.error) throw new Error(count.error.message);
+  const c = count.data as unknown as CountRow;
   return {
-    count: count.data as unknown as CountRow,
+    count: c,
     lines: (lines.data ?? []) as unknown as CountLine[],
+    ultimoConteo: await getUltimoConteoPorProducto(c.location.id, id),
   };
+}
+
+// fecha del último conteo (cerrado o aprobado) en que se contó cada producto en esa ubicación
+export async function getUltimoConteoPorProducto(locationId: string, excluir?: string): Promise<Map<string, string>> {
+  const { data: conteos } = await db()
+    .from("inventory_counts")
+    .select("id, closed_at")
+    .eq("location_id", locationId)
+    .in("status", ["CLOSED", "APPROVED"])
+    .order("closed_at", { ascending: false })
+    .limit(50);
+  const lista = (conteos ?? []).filter((c) => c.id !== excluir && c.closed_at);
+  const out = new Map<string, string>();
+  if (!lista.length) return out;
+  const fecha = new Map(lista.map((c) => [c.id as string, c.closed_at as string]));
+  const { data: lineas } = await db()
+    .from("inventory_count_lines")
+    .select("count_id, product_id")
+    .in("count_id", lista.map((c) => c.id))
+    .not("counted", "is", null);
+  for (const l of lineas ?? []) {
+    const f = fecha.get(l.count_id as string)!;
+    const prev = out.get(l.product_id as string);
+    if (!prev || f > prev) out.set(l.product_id as string, f);
+  }
+  return out;
 }
 
 // ── Auditoría ───────────────────────────────────────────────────────

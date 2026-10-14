@@ -2,25 +2,41 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getCountDetail } from "@/lib/queries";
 import { guardarConteo, revisarConteo } from "@/lib/actions";
-import { fmtQty, fmtDateTime } from "@/lib/types";
+import Link from "next/link";
+import { fmtDate, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+
+const TIPO_LABEL: Record<string, string> = {
+  TERMINADO: "Terminado",
+  MONODOSIS: "Monodosis",
+  KIT: "Kit",
+  PACKAGING: "Packaging",
+  INSUMO: "Insumo",
+  ACCESORIO: "Accesorio",
+  GRANEL: "Granel",
+};
 
 export default async function ConteoDetalle({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ ok?: string; error?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; tipo?: string }>;
 }) {
   const user = await requireSection("conteos");
   const { id } = await params;
-  const { ok, error } = await searchParams;
-  const { count, lines } = await getCountDetail(id);
+  const { ok, error, tipo } = await searchParams;
+  const { count, lines, ultimoConteo } = await getCountDetail(id);
 
-  const diffs = lines.map((l) => ({ ...l, diff: (l.counted ?? 0) - l.expected }));
+  // solo lo contado se compara (y se ajusta); lo que quedó vacío es "sin contar"
+  const contadas = lines.filter((l) => l.counted !== null);
+  const sinContar = lines.filter((l) => l.counted === null);
+  const diffs = contadas.map((l) => ({ ...l, diff: Number(l.counted) - Number(l.expected) }));
   const conDiferencia = diffs.filter((l) => l.diff !== 0);
+  const tiposPresentes = [...new Set(lines.map((l) => l.product.type))];
+  const visibles = tipo ? lines.filter((l) => l.product.type === tipo) : lines;
 
   return (
     <div className="max-w-3xl">
@@ -39,10 +55,28 @@ export default async function ConteoDetalle({
           <p className="mb-4 text-sm text-soft">
             Contá lo que hay físicamente. El sistema no te muestra cuánto “debería” haber.
           </p>
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <Link href={`/conteos/${count.id}`} className={`rounded-full border px-3 py-1 text-xs font-medium ${!tipo ? "border-rose-deep bg-rose-deep text-white" : "border-line bg-white text-soft"}`}>
+              Todos ({lines.length})
+            </Link>
+            {tiposPresentes.map((t) => (
+              <Link
+                key={t}
+                href={`/conteos/${count.id}?tipo=${t}`}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${tipo === t ? "border-rose-deep bg-rose-deep text-white" : "border-line bg-white text-soft"}`}
+              >
+                {TIPO_LABEL[t] ?? t} ({lines.filter((l) => l.product.type === t).length})
+              </Link>
+            ))}
+            <span className="ml-auto text-sm">
+              Contados <b>{contadas.length}</b> de {lines.length}
+            </span>
+          </div>
           <form action={guardarConteo} className="space-y-4">
             <input type="hidden" name="conteo" value={count.id} />
+            {tipo && <input type="hidden" name="tipo" value={tipo} />}
             <div className="space-y-3">
-              {lines.map((l) => (
+              {visibles.map((l) => (
                 <div
                   key={l.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-blush-100 p-3"
@@ -50,9 +84,14 @@ export default async function ConteoDetalle({
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{l.product.name}</div>
                     <div className="text-xs text-soft">
-                      {l.lot ? `Lote ${l.lot.code} · ` : ""}
+                      {TIPO_LABEL[l.product.type] ?? l.product.type} · {l.lot ? `Lote ${l.lot.code} · ` : ""}
                       {l.product.unit}
                       {l.counted !== null ? " · ya contado" : ""}
+                    </div>
+                    <div className="text-[11px] text-soft">
+                      {ultimoConteo.get(l.product.id)
+                        ? `Último conteo: ${fmtDate(ultimoConteo.get(l.product.id)!)}`
+                        : "Nunca contado acá"}
                     </div>
                   </div>
                   <input
@@ -76,7 +115,9 @@ export default async function ConteoDetalle({
               </SubmitButton>
             </div>
             <p className="text-xs text-soft">
-              Cerrar exige todas las líneas contadas y no permite modificaciones posteriores.
+              Podés cerrar aunque no hayas contado todo: lo que quede vacío figura como “sin contar” y su stock no se
+              toca. Después de cerrar no se puede modificar.
+              {sinContar.length > 0 && ` Hoy quedarían ${sinContar.length} sin contar.`}
             </p>
           </form>
         </Card>
@@ -85,7 +126,11 @@ export default async function ConteoDetalle({
       {count.status !== "OPEN" && (
         <>
           <Card>
-            <h2 className="mb-3 font-semibold">Teórico vs físico</h2>
+            <h2 className="mb-1 font-semibold">Teórico vs físico</h2>
+            <p className="mb-3 text-sm text-soft">
+              {contadas.length} producto(s) contado(s)
+              {sinContar.length > 0 && ` · ${sinContar.length} sin contar (no se comparan ni se ajustan)`}
+            </p>
             <div className="space-y-2 sm:hidden">
               {diffs.map((l) => (
                 <div key={l.id} className="rounded-lg border border-blush-100 p-3">
@@ -145,6 +190,21 @@ export default async function ConteoDetalle({
                 ? "Sin diferencias: el stock físico coincide con el teórico. ✓"
                 : `${conDiferencia.length} línea(s) con diferencia.`}
             </p>
+            {sinContar.length > 0 && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-medium text-soft">
+                  Ver los {sinContar.length} sin contar
+                </summary>
+                <ul className="mt-2 grid gap-1 text-sm text-soft sm:grid-cols-2">
+                  {sinContar.map((l) => (
+                    <li key={l.id}>
+                      {l.product.name}
+                      {l.lot ? ` · lote ${l.lot.code}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </Card>
 
           {count.status === "CLOSED" && user.role !== "ADMIN" && (

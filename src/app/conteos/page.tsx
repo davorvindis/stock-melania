@@ -15,6 +15,17 @@ const ESTADOS: Record<string, { label: string; cls: string }> = {
   REJECTED: { label: "Rechazado", cls: "bg-stone-200 text-stone-700" },
 };
 
+const TIPOS: [string, string][] = [
+  ["TERMINADO", "Producto terminado"],
+  ["MONODOSIS", "Monodosis"],
+  ["KIT", "Kits"],
+  ["PACKAGING", "Packaging"],
+  ["INSUMO", "Insumos"],
+  ["ACCESORIO", "Accesorios"],
+  ["GRANEL", "Granel"],
+];
+const nombreTipo = new Map(TIPOS);
+
 export default async function Conteos({
   searchParams,
 }: {
@@ -47,8 +58,23 @@ export default async function Conteos({
               ))}
             </select>
           </div>
-          <div className="flex items-end">
-            <SubmitButton className={`${button} w-full`}>
+          <fieldset className="sm:col-span-2">
+            <legend className={label}>¿Qué tipos de producto vas a contar?</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {TIPOS.map(([v, l]) => (
+                <label key={v} className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" name="tipos" value={v} className="h-4 w-4 accent-rose-deep" />
+                  {l}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-soft">
+              Si no marcás ninguno, entran todos. Igual podés cerrar el conteo aunque no cuentes todo: lo que no
+              cargues queda “sin contar” y no se toca.
+            </p>
+          </fieldset>
+          <div className="flex items-end sm:col-span-2">
+            <SubmitButton className={`${button} w-full sm:w-auto`}>
               Abrir conteo
             </SubmitButton>
           </div>
@@ -71,6 +97,7 @@ export default async function Conteos({
                 </span>
               </div>
               <div className="mt-1 text-xs text-soft">
+                {c.product_types?.length ? `${c.product_types.map((t) => nombreTipo.get(t) ?? t).join(", ")} · ` : ""}
                 Abierto por {c.opened_by} · {fmtDateTime(c.opened_at)}
                 {c.reviewed_by ? ` · revisó ${c.reviewed_by}` : ""}
               </div>
