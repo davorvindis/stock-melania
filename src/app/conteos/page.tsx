@@ -13,6 +13,7 @@ const ESTADOS: Record<string, { label: string; cls: string }> = {
   CLOSED: { label: "Cerrado — a revisar", cls: "bg-amber-100 text-amber-800" },
   APPROVED: { label: "Aprobado", cls: "bg-emerald-100 text-emerald-800" },
   REJECTED: { label: "Rechazado", cls: "bg-stone-200 text-stone-700" },
+  CANCELLED: { label: "Cerrado sin contar", cls: "bg-stone-200 text-stone-700" },
 };
 
 const TIPOS: [string, string][] = [

@@ -426,6 +426,15 @@ export async function abrirConteo(formData: FormData) {
   redirect(`/conteos/${data}?ok=${encodeURIComponent("Conteo abierto. Cargá las cantidades físicas.")}`);
 }
 
+async function hayContadas(countId: string) {
+  const { count } = await db()
+    .from("inventory_count_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("count_id", countId)
+    .not("counted", "is", null);
+  return (count ?? 0) > 0;
+}
+
 export async function guardarConteo(formData: FormData) {
   const user = await requireSection("conteos");
   const countId = String(formData.get("conteo") ?? "");
@@ -452,9 +461,15 @@ export async function guardarConteo(formData: FormData) {
     if (error) backWithError(back, error.message);
   }
   if (cerrar) {
-    const { error } = await db().rpc("close_count", { p_count: countId, p_actor: user.alias });
+    const motivo = String(formData.get("motivo_cierre") ?? "").trim();
+    const { error } = await db().rpc("close_count", { p_count: countId, p_actor: user.alias, p_reason: motivo || null });
     if (error) backWithError(back, error.message);
-    okRedirect(back, "Conteo cerrado. Un responsable debe revisar las diferencias.");
+    okRedirect(
+      back,
+      lines.length === 0 && !(await hayContadas(countId))
+        ? "Conteo cerrado sin contar. No se modificó el stock."
+        : "Conteo cerrado. Un responsable debe revisar las diferencias."
+    );
   }
   okRedirect(back, "Avance guardado");
 }

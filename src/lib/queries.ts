@@ -277,7 +277,7 @@ export async function getLotDetail(id: string) {
 
 export type CountRow = {
   id: string;
-  status: "OPEN" | "CLOSED" | "APPROVED" | "REJECTED";
+  status: "OPEN" | "CLOSED" | "APPROVED" | "REJECTED" | "CANCELLED";
   opened_by: string;
   opened_at: string;
   closed_by: string | null;
@@ -285,6 +285,7 @@ export type CountRow = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_reason: string | null;
+  notes: string | null;
   product_types: string[] | null;
   location: { id: string; name: string };
 };
@@ -300,7 +301,7 @@ export type CountLine = {
 export async function getCounts(): Promise<CountRow[]> {
   const { data, error } = await db()
     .from("inventory_counts")
-    .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, product_types, location:locations(id, name)")
+    .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, notes, product_types, location:locations(id, name)")
     .order("opened_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as CountRow[];
@@ -311,7 +312,7 @@ export async function getCountDetail(id: string) {
   const [count, lines] = await Promise.all([
     cli
       .from("inventory_counts")
-      .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, product_types, location:locations(id, name)")
+      .select("id, status, opened_by, opened_at, closed_by, closed_at, reviewed_by, reviewed_at, review_reason, notes, product_types, location:locations(id, name)")
       .eq("id", id)
       .single(),
     cli

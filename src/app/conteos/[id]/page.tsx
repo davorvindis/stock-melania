@@ -106,6 +106,18 @@ export default async function ConteoDetalle({
                 </div>
               ))}
             </div>
+            <div>
+              <label className={label}>Motivo del cierre {contadas.length === 0 ? "*" : "(opcional)"}</label>
+              <input
+                type="text"
+                name="motivo_cierre"
+                placeholder="ej. prueba, no llegué con el tiempo, solo conté la línea Melania"
+                className={input}
+              />
+              <p className="mt-1 text-xs text-soft">
+                Solo se usa al cerrar. Si no contaste nada es obligatorio y el conteo queda “Cerrado sin contar”.
+              </p>
+            </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <SubmitButton className={`${button} bg-ink hover:bg-stone-700`}>
                 Guardar avance
@@ -123,8 +135,23 @@ export default async function ConteoDetalle({
         </Card>
       )}
 
-      {count.status !== "OPEN" && (
+      {count.status === "CANCELLED" && (
+        <Card className="border-stone-300">
+          <h2 className="mb-1 font-semibold">Cerrado sin contar</h2>
+          <p className="text-sm">
+            Motivo: <b>{count.notes ?? "—"}</b>
+          </p>
+          <p className="mt-1 text-sm text-soft">No se cargó ninguna cantidad: el stock no se modificó.</p>
+        </Card>
+      )}
+
+      {count.status !== "OPEN" && count.status !== "CANCELLED" && (
         <>
+          {count.notes && (
+            <p className="mb-3 text-sm text-soft">
+              Motivo del cierre: <span className="text-ink">{count.notes}</span>
+            </p>
+          )}
           <Card>
             <h2 className="mb-1 font-semibold">Teórico vs físico</h2>
             <p className="mb-3 text-sm text-soft">
