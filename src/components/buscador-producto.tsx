@@ -6,7 +6,7 @@ export type OpcionBuscador = { value: string; label: string; grupo?: string };
 
 // sin acentos y en minúscula, para buscar "keratina" o "KERATINA" igual
 const normalizar = (t: string) =>
-  t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 const MAX_VISIBLES = 80;
 

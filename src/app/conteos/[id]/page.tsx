@@ -2,9 +2,9 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getCountDetail } from "@/lib/queries";
 import { guardarConteo, revisarConteo } from "@/lib/actions";
-import Link from "next/link";
 import { fmtDate, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
+import { BuscadorConteo } from "@/components/buscador-conteo";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,6 @@ export default async function ConteoDetalle({
   const diffs = contadas.map((l) => ({ ...l, diff: Number(l.counted) - Number(l.expected) }));
   const conDiferencia = diffs.filter((l) => l.diff !== 0);
   const tiposPresentes = [...new Set(lines.map((l) => l.product.type))];
-  const visibles = tipo ? lines.filter((l) => l.product.type === tipo) : lines;
 
   return (
     <div className="max-w-3xl">
@@ -55,30 +54,31 @@ export default async function ConteoDetalle({
           <p className="mb-4 text-sm text-soft">
             Contá lo que hay físicamente. El sistema no te muestra cuánto “debería” haber.
           </p>
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            <Link href={`/conteos/${count.id}`} className={`rounded-full border px-3 py-1 text-xs font-medium ${!tipo ? "border-rose-deep bg-rose-deep text-white" : "border-line bg-white text-soft"}`}>
-              Todos ({lines.length})
-            </Link>
-            {tiposPresentes.map((t) => (
-              <Link
-                key={t}
-                href={`/conteos/${count.id}?tipo=${t}`}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${tipo === t ? "border-rose-deep bg-rose-deep text-white" : "border-line bg-white text-soft"}`}
-              >
-                {TIPO_LABEL[t] ?? t} ({lines.filter((l) => l.product.type === t).length})
-              </Link>
-            ))}
-            <span className="ml-auto text-sm">
-              Contados <b>{contadas.length}</b> de {lines.length}
-            </span>
-          </div>
+          <p className="mb-2 text-right text-sm">
+            Contados <b>{contadas.length}</b> de {lines.length}
+          </p>
           <form action={guardarConteo} className="space-y-4">
             <input type="hidden" name="conteo" value={count.id} />
-            {tipo && <input type="hidden" name="tipo" value={tipo} />}
-            <div className="space-y-3">
-              {visibles.map((l) => (
+            <BuscadorConteo
+              contenedorId="lineas-conteo"
+              lineas={lines.map((l) => ({
+                id: l.id,
+                tipo: l.product.type,
+                buscar: `${l.product.name} ${l.product.sku} ${l.lot?.code ?? ""}`,
+              }))}
+              inicialTipo={tipo && tiposPresentes.includes(tipo) ? tipo : ""}
+              tipos={tiposPresentes.map((t) => ({
+                value: t,
+                label: TIPO_LABEL[t] ?? t,
+                cantidad: lines.filter((l) => l.product.type === t).length,
+              }))}
+            />
+            <div id="lineas-conteo" className="space-y-3">
+              {lines.map((l) => (
                 <div
                   key={l.id}
+                  data-linea={l.id}
+                  hidden={!!tipo && tiposPresentes.includes(tipo) && l.product.type !== tipo}
                   className="flex items-center justify-between gap-3 rounded-lg border border-blush-100 p-3"
                 >
                   <div className="min-w-0">
