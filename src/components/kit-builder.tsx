@@ -17,7 +17,6 @@ type Item = { id: string; quantity: number };
 const TIPO_CORTO: Record<string, string> = {
   TERMINADO: "Terminado",
   MONODOSIS: "Monodosis",
-  INSUMO: "Insumo",
   PACKAGING: "Packaging",
   GRANEL: "Granel",
   ACCESORIO: "Accesorio",

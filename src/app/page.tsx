@@ -16,7 +16,6 @@ const TIPOS_PRODUCTO: [string, string][] = [
   ["MONODOSIS", "Monodosis"],
   ["KIT", "Kits"],
   ["PACKAGING", "Packaging"],
-  ["INSUMO", "Insumos"],
   ["ACCESORIO", "Accesorios"],
   ["GRANEL", "Granel"],
 ];

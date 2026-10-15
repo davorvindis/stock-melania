@@ -160,7 +160,6 @@ export const TIPOS_PRODUCTO_LABEL: Record<string, string> = {
   MONODOSIS: "Monodosis",
   KIT: "Kits",
   PACKAGING: "Packaging",
-  INSUMO: "Insumos",
   ACCESORIO: "Accesorios",
   GRANEL: "Granel",
 };

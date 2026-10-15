@@ -13,7 +13,6 @@ const TIPO_LABEL: Record<string, string> = {
   MONODOSIS: "Monodosis",
   KIT: "Kit",
   PACKAGING: "Packaging",
-  INSUMO: "Insumo",
   ACCESORIO: "Accesorio",
   GRANEL: "Granel",
 };

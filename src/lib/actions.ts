@@ -248,7 +248,7 @@ const productoSchema = z.object({
   descripcion: z.string().trim().optional(),
   categoria: z.string().trim().optional(),
   unidad: z.string().trim().min(1, "Falta la unidad"),
-  tipo: z.enum(["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO", "KIT"]),
+  tipo: z.enum(["TERMINADO", "MONODOSIS", "PACKAGING", "GRANEL", "ACCESORIO", "KIT"]),
   stock_minimo: z.coerce.number().min(0).default(0),
 });
 
@@ -414,7 +414,7 @@ export async function abrirConteo(formData: FormData) {
   const ubicacion = uuid.safeParse(String(formData.get("ubicacion") ?? ""));
   if (!ubicacion.success) backWithError(back, "Elegí una ubicación");
   exigirUbicacion(user, ubicacion.data, back);
-  const TIPOS_VALIDOS = ["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO", "KIT"];
+  const TIPOS_VALIDOS = ["TERMINADO", "MONODOSIS", "PACKAGING", "GRANEL", "ACCESORIO", "KIT"];
   const tipos = formData.getAll("tipos").map(String).filter((t) => TIPOS_VALIDOS.includes(t));
   const { data, error } = await db().rpc("open_count", {
     p_location: ubicacion.data,

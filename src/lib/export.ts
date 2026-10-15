@@ -167,7 +167,7 @@ export async function plantillaProductosWorkbook(): Promise<ArrayBuffer> {
   styleHeader(ws);
   const info = wb.addWorksheet("Instrucciones");
   info.getCell("A1").value = "SKU y Nombre son obligatorios. SKUs repetidos o ya existentes se saltean.";
-  info.getCell("A2").value = "Tipos válidos: TERMINADO, MONODOSIS, INSUMO, PACKAGING, GRANEL, ACCESORIO";
+  info.getCell("A2").value = "Tipos válidos: TERMINADO, MONODOSIS, PACKAGING, GRANEL, ACCESORIO (los insumos van como ACCESORIO)";
   info.getCell("A3").value = "N° de lote, Vencimiento, Cantidad inicial y Ubicación son opcionales.";
   info.getCell("A4").value = "Si cargás Cantidad inicial, la Ubicación es obligatoria (ej. Depósito, Store).";
   info.getCell("A5").value = "Con esos datos se registra el stock inicial como ingreso trazable.";
@@ -182,7 +182,7 @@ export type FilaProducto = {
   cantidad: number | null; ubicacion: string | null; costo: number | null;
 };
 
-const TIPOS_VALIDOS = ["TERMINADO", "MONODOSIS", "INSUMO", "PACKAGING", "GRANEL", "ACCESORIO"];
+const TIPOS_VALIDOS = ["TERMINADO", "MONODOSIS", "PACKAGING", "GRANEL", "ACCESORIO"];
 
 // acepta Date de Excel, dd/mm/aaaa o aaaa-mm-dd → ISO
 function parseFecha(row: ExcelJS.Row, col: number): string | null | "invalida" {
@@ -218,7 +218,9 @@ export async function parseProductosExcel(buf: ArrayBuffer): Promise<{ filas: Fi
     if (!sku && !nombre) return; // fila vacía
     if (!sku) { errores.push(`Fila ${n}: falta SKU`); return; }
     if (!nombre) { errores.push(`Fila ${n}: falta Nombre`); return; }
-    const tipo = (cell(6) || "TERMINADO").toUpperCase();
+    // "Insumo" ya no existe: se carga como Accesorio
+    const tipoTxt = (cell(6) || "TERMINADO").toUpperCase();
+    const tipo = tipoTxt === "INSUMO" ? "ACCESORIO" : tipoTxt;
     if (!TIPOS_VALIDOS.includes(tipo)) { errores.push(`Fila ${n}: tipo "${cell(6)}" inválido`); return; }
     const minimo = num(7) ?? 0;
     if (isNaN(minimo) || minimo < 0) { errores.push(`Fila ${n}: stock mínimo inválido`); return; }

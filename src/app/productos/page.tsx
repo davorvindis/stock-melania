@@ -12,7 +12,6 @@ export const dynamic = "force-dynamic";
 const TIPOS = [
   ["TERMINADO", "Producto terminado"],
   ["MONODOSIS", "Monodosis"],
-  ["INSUMO", "Insumo"],
   ["PACKAGING", "Packaging"],
   ["GRANEL", "Granel / materia prima"],
   ["ACCESORIO", "Accesorio"],
