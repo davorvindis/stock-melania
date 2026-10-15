@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { requireSection, requireRole, can, ubicacionFija, type Profile } from "./auth";
 import { NEEDS_DESTINATION, OPERABLE_TYPES } from "./types";
+import { BUCKET_COMPROBANTES, subirComprobante } from "./comprobantes";
 
 function backWithError(path: string, message: string): never {
   redirect(`${path}?error=${encodeURIComponent(message)}`);
@@ -87,6 +88,12 @@ export async function registrarIngreso(formData: FormData) {
     backWithError(back, `"${kits[0].name}" es un kit: los kits no se ingresan, se arman con sus componentes`);
   }
 
+  // validar los archivos antes de registrar el ingreso
+  for (const [campo, nombre] of [["remito_foto", "remito"], ["factura_foto", "factura"]] as const) {
+    const f = formData.get(campo);
+    if (f instanceof File && f.size > 4 * 1024 * 1024) backWithError(back, `La foto del ${nombre} pesa más de 4 MB`);
+  }
+
   const { data: entrada, error } = await db().rpc("create_stock_entry", {
     p_entry_date: d.fecha,
     p_supplier: d.proveedor || null,
@@ -99,14 +106,51 @@ export async function registrarIngreso(formData: FormData) {
   });
   if (error) backWithError(back, error.message);
 
+  // fotos del remito y la factura (el ingreso ya quedó registrado aunque falle la subida)
+  let avisoArchivos = "";
+  if (entrada) {
+    const [r, f] = await Promise.all([
+      subirComprobante(formData.get("remito_foto"), "remito"),
+      subirComprobante(formData.get("factura_foto"), "factura"),
+    ]);
+    const cambios: Record<string, string> = {};
+    if (r.path) cambios.remito_path = r.path;
+    if (f.path) cambios.invoice_path = f.path;
+    if (Object.keys(cambios).length) await db().from("stock_entries").update(cambios).eq("id", entrada as string);
+    const errores = [r.error, f.error].filter(Boolean);
+    if (errores.length) avisoArchivos = ` (atención: ${errores.join("; ")} — podés adjuntarlo desde el historial)`;
+  }
+
   if (oc && entrada) {
     await registrarRecepcionOrden(oc, entrada as string, lineas, lineasOc, user.alias);
-    okRedirect(`/compras/${oc}`, "Ingreso registrado y orden de compra actualizada");
+    okRedirect(`/compras/${oc}`, `Ingreso registrado y orden de compra actualizada${avisoArchivos}`);
   }
   okRedirect(
-    "/movimientos",
-    lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado"
+    "/ingresos/nuevo",
+    (lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado") + avisoArchivos
   );
+}
+
+// adjuntar (o reemplazar) la foto del remito o la factura de un ingreso ya registrado
+export async function adjuntarComprobante(formData: FormData) {
+  const user = await requireSection("ingresos");
+  const back = "/ingresos/nuevo";
+  const id = uuid.safeParse(String(formData.get("ingreso") ?? ""));
+  if (!id.success) backWithError(back, "Ingreso inválido");
+  const tipo = formData.get("tipo") === "factura" ? "factura" : "remito";
+  const r = await subirComprobante(formData.get("archivo"), tipo);
+  if (r.error) backWithError(back, r.error);
+  if (!r.path) backWithError(back, `Elegí la foto del ${tipo}`);
+  const campo = tipo === "factura" ? "invoice_path" : "remito_path";
+  const { data: antes } = await db().from("stock_entries").select(campo).eq("id", id.data).maybeSingle();
+  const { error } = await db().from("stock_entries").update({ [campo]: r.path }).eq("id", id.data);
+  if (error) backWithError(back, error.message);
+  const viejo = (antes as Record<string, string | null> | null)?.[campo];
+  if (viejo) await db().storage.from(BUCKET_COMPROBANTES).remove([viejo]);
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: `stock_entry:${tipo}`, entity: "stock_entries", entity_id: id.data,
+  });
+  okRedirect(back, `${tipo === "factura" ? "Factura" : "Remito"} adjuntado`);
 }
 
 // suma lo recibido a cada línea de la orden y actualiza su estado.
