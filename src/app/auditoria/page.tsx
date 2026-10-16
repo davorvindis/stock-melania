@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { CATEGORIAS_AUDITORIA, getAuditoria, type AuditRow, type MovimientoAuditado } from "@/lib/queries";
 import { fmtDateTime, fmtQty, MOVEMENT_LABELS, origenDestino } from "@/lib/types";
 import { Card, PageTitle, input } from "@/components/ui";
+import { RangoFechas } from "@/components/rango-fechas";
 
 export const dynamic = "force-dynamic";
 
@@ -184,9 +185,8 @@ export default async function Auditoria({ searchParams }: { searchParams: Promis
             </option>
           ))}
         </select>
-        <input type="date" name="desde" defaultValue={sp.desde ?? ""} aria-label="Desde" className={input} />
-        <input type="date" name="hasta" defaultValue={sp.hasta ?? ""} aria-label="Hasta" className={input} />
-        <button type="submit" className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
+        <RangoFechas desde={sp.desde ?? ""} hasta={sp.hasta ?? ""} className="sm:col-span-2 lg:col-span-4" />
+        <button type="submit" className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper lg:self-end">
           Filtrar
         </button>
       </form>

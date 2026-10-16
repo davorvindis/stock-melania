@@ -4,6 +4,7 @@ import { getSuppliers } from "@/lib/queries";
 import { ESTADOS_ABIERTOS, ESTADOS_OC, estadoOcClass, getOrdenes, nombreMes } from "@/lib/compras";
 import { fmtDate, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input } from "@/components/ui";
+import { RangoFechas } from "@/components/rango-fechas";
 
 export const dynamic = "force-dynamic";
 
@@ -85,16 +86,13 @@ export default async function Compras({ searchParams }: { searchParams: Promise<
             </option>
           ))}
         </select>
-        <input type="date" name="desde" defaultValue={sp.desde ?? ""} aria-label="Desde" className={input} />
-        <div className="flex gap-2">
-          <input type="date" name="hasta" defaultValue={sp.hasta ?? ""} aria-label="Hasta" className={input} />
-          <button
-            type="submit"
-            className="shrink-0 rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper"
-          >
-            Filtrar
-          </button>
-        </div>
+        <RangoFechas desde={sp.desde ?? ""} hasta={sp.hasta ?? ""} className="sm:col-span-2 lg:col-span-5" />
+        <button
+          type="submit"
+          className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper lg:self-end"
+        >
+          Filtrar
+        </button>
       </form>
       <p className="mb-4 text-sm text-soft">
         {ordenes.length} orden(es)

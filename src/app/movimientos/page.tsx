@@ -5,6 +5,7 @@ import { buscarMovimientos, getLocations, type MovementRow } from "@/lib/queries
 import { revertirMovimiento } from "@/lib/actions";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, th, td, input } from "@/components/ui";
+import { RangoFechas } from "@/components/rango-fechas";
 import { MovementCard, movementBadgeClass, OrigenDestino } from "@/components/movement-card";
 
 export const dynamic = "force-dynamic";
@@ -115,15 +116,8 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-2 text-sm text-soft">
-          Desde
-          <input type="date" name="desde" defaultValue={sp.desde ?? ""} className={input} />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-soft">
-          Hasta
-          <input type="date" name="hasta" defaultValue={sp.hasta ?? ""} className={input} />
-        </label>
-        <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper lg:col-start-6">
+        <RangoFechas desde={sp.desde ?? ""} hasta={sp.hasta ?? ""} className="sm:col-span-2 lg:col-span-4" />
+        <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper lg:col-span-2 lg:self-end">
           Filtrar
         </SubmitButton>
       </form>

@@ -5,6 +5,7 @@ import { getLocations, getProducts } from "@/lib/queries";
 import { CANALES, agruparPedidos, getVentas, porPersona, porProducto, rangoMesActual } from "@/lib/ventas";
 import { MOVEMENT_LABELS, fmtDate, fmtDateTime, fmtQty } from "@/lib/types";
 import { Card, PageTitle, input, th, td } from "@/components/ui";
+import { RangoFechas } from "@/components/rango-fechas";
 
 export const dynamic = "force-dynamic";
 
@@ -68,16 +69,9 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
         </a>
       </div>
 
-      <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+      <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input type="hidden" name="vista" value={vista} />
-        <label className="flex items-center gap-2 text-sm text-soft">
-          Desde
-          <input type="date" name="desde" defaultValue={f.desde} className={input} />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-soft">
-          Hasta
-          <input type="date" name="hasta" defaultValue={f.hasta} className={input} />
-        </label>
+        <RangoFechas desde={f.desde} hasta={f.hasta} className="sm:col-span-2 lg:col-span-5" />
         <select name="canal" defaultValue={sp.canal ?? ""} aria-label="Canal" className={input}>
           {Object.entries(CANALES).map(([v, c]) => (
             <option key={v} value={v}>
