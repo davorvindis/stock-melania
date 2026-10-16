@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser, can } from "@/lib/auth";
 import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/ventas";
 import { contarPendientesVacaciones } from "@/lib/personal";
+import { getPendientes } from "@/lib/preventa";
 import { getBalances, getMovements, getCounts, isAvailable } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -33,12 +34,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const hace14 = ultimos14[0].clave;
   const desdeVentas = hace14 < mes.desde ? hace14 : mes.desde;
   const apruebaVacaciones = user.role === "ADMIN" && can(user, "vacaciones");
-  const [balances, movements, counts, ventas, vacPendientes] = await Promise.all([
+  const vePreventa = can(user, "preventa");
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
     getVentas({ desde: desdeVentas, hasta: mes.hasta, persona: verTodas ? undefined : user.alias }),
     apruebaVacaciones ? contarPendientesVacaciones() : Promise.resolve(0),
+    vePreventa ? getPendientes() : Promise.resolve([]),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -111,6 +114,23 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <Stat label="En cuarentena / bloqueado" value={fmtQty(enCuarentena)} alert={enCuarentena > 0} />
         <Stat label="Productos bajo mínimo" value={bajoMinimo.length} alert={bajoMinimo.length > 0} />
       </div>
+
+      {(() => {
+        // preventas pendientes de productos que ya tienen stock disponible
+        const conStock = new Set(balances.filter((b) => isAvailable(b) && Number(b.quantity) > 0).map((b) => b.product.id));
+        const listas = preventaPend.filter((l) => conStock.has(l.product_id));
+        const clientes = new Set(listas.map((l) => l.preorder.id)).size;
+        return listas.length > 0 ? (
+          <Card className="mt-4 border-emerald-200">
+            <p className="text-sm">
+              <b className="text-emerald-800">Hay stock para {clientes} preventa(s) pendiente(s).</b>{" "}
+              <Link href="/preventa" className="font-medium text-rose-deep hover:underline">
+                Entregar →
+              </Link>
+            </p>
+          </Card>
+        ) : null;
+      })()}
 
       {vacPendientes > 0 && (
         <Card className="mt-4 border-amber-200">

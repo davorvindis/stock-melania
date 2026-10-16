@@ -121,14 +121,29 @@ export async function registrarIngreso(formData: FormData) {
     if (errores.length) avisoArchivos = ` (atención: ${errores.join("; ")} — podés adjuntarlo desde el historial)`;
   }
 
+  // ¿alguno de estos productos tiene preventas pendientes? → pantalla de reparto
+  let hayPreventa = false;
+  if (entrada) {
+    const { count } = await db()
+      .from("preorder_lines")
+      .select("id, preorder:preorders!inner(status)", { count: "exact", head: true })
+      .in("product_id", lineas.map((l) => l.product_id))
+      .in("preorder.status", ["PENDIENTE", "PARCIAL"]);
+    hayPreventa = (count ?? 0) > 0;
+  }
+  const irAlReparto = (volver: string, msg: string): never => {
+    revalidatePath("/", "layout");
+    redirect(`/preventa/repartir?ingreso=${entrada}&volver=${encodeURIComponent(volver)}&ok=${encodeURIComponent(msg)}`);
+  };
+
   if (oc && entrada) {
     await registrarRecepcionOrden(oc, entrada as string, lineas, lineasOc, user.alias);
+    if (hayPreventa) irAlReparto(`/compras/${oc}`, `Ingreso registrado${avisoArchivos}`);
     okRedirect(`/compras/${oc}`, `Ingreso registrado y orden de compra actualizada${avisoArchivos}`);
   }
-  okRedirect(
-    "/ingresos/nuevo",
-    (lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado") + avisoArchivos
-  );
+  const msg = (lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado") + avisoArchivos;
+  if (hayPreventa) irAlReparto("/ingresos/nuevo", msg);
+  okRedirect("/ingresos/nuevo", msg);
 }
 
 // adjuntar (o reemplazar) la foto del remito o la factura de un ingreso ya registrado
