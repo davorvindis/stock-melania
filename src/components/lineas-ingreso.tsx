@@ -19,7 +19,8 @@ export function LineasIngreso({ productos, inicial }: { productos: OpcionBuscado
   const [lineas, setLineas] = useState<Linea[]>(
     inicial?.length ? inicial.map((l, i) => ({ ...l, key: i })) : [{ key: 0, producto: "", cantidad: "", costo: "" }]
   );
-  const [next, setNext] = useState(inicial?.length ?? 1);
+  // siguiente clave libre: si no viene nada precargado, la línea vacía ya usa la 0
+  const [next, setNext] = useState(Math.max(inicial?.length ?? 0, 1));
 
   const set = (key: number, cambios: Partial<Linea>) =>
     setLineas((l) => l.map((x) => (x.key === key ? { ...x, ...cambios } : x)));
