@@ -2,6 +2,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireSection, ubicacionFija, can } from "@/lib/auth";
 import Link from "next/link";
 import { getOrden } from "@/lib/compras";
+import { emparejar } from "@/lib/emparejar";
 import { randomUUID } from "crypto";
 import { getProducts, getLocations, getSuppliers } from "@/lib/queries";
 import { registrarIngreso } from "@/lib/actions";
@@ -23,28 +24,30 @@ export default async function NuevoIngreso({
   const { ok, error, oc, q, n } = await searchParams;
   const limite = Math.min(Math.max(parseInt(n ?? "20", 10) || 20, 20), 500);
   const { ingresos, total: totalIngresos } = await getHistorialIngresos(q, limite);
+  const [products, locations, suppliers] = await Promise.all([
+    getProducts(),
+    getLocations(),
+    getSuppliers(),
+  ]);
+  const catalogo = products.filter((p) => p.active && p.type !== "KIT");
   // recibir una orden de compra: precarga proveedor y lo que falta recibir
   const orden =
     oc && can(user, "compras") && /^[0-9a-f-]{36}$/i.test(oc) ? await getOrden(oc) : null;
   const inicial: LineaInicial[] = (orden?.lines ?? [])
     .map((l) => ({ l, falta: l.quantity ? Number(l.quantity) - Number(l.received_qty) : 0 }))
     .filter(({ l, falta }) => !l.quantity || falta > 0)
-    .map(({ l, falta }) => ({
-      producto: l.product_id ?? "",
+    .map(({ l, falta }) => ({ l, falta, sugerido: l.product_id ? null : emparejar(`${l.description} ${l.kind ?? ""}`, catalogo) }))
+    .map(({ l, falta, sugerido }) => ({
+      producto: l.product_id ?? sugerido?.id ?? "",
       cantidad: falta > 0 ? String(falta) : "",
       costo: l.unit_cost != null ? String(l.unit_cost) : "",
       ocLinea: l.id,
-      detalle: `${l.description}${l.kind ? ` (${l.kind})` : ""}${l.quantity ? ` · pedidas ${l.quantity}, recibidas ${l.received_qty}` : ""}`,
+      detalle: `${l.description}${l.kind ? ` (${l.kind})` : ""}${l.quantity ? ` · pedidas ${l.quantity}, recibidas ${l.received_qty}` : ""}${
+        sugerido ? " · producto elegido automáticamente: revisalo" : !l.product_id ? " · elegí el producto" : ""
+      }`,
     }));
-  const [products, locations, suppliers] = await Promise.all([
-    getProducts(),
-    getLocations(),
-    getSuppliers(),
-  ]);
   const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
-  const opcionesProductos = products
-    .filter((p) => p.active && p.type !== "KIT")
-    .map((p) => ({ value: p.id, label: `${p.name} · ${p.sku} · ${p.unit}` }));
+  const opcionesProductos = catalogo.map((p) => ({ value: p.id, label: `${p.name} · ${p.sku} · ${p.unit}` }));
 
   return (
     <div className="max-w-3xl">

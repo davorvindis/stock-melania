@@ -173,14 +173,21 @@ export async function adjuntarComprobante(formData: FormData) {
 async function registrarRecepcionOrden(
   oc: string,
   entrada: string,
-  lineas: { quantity: number }[],
+  lineas: { quantity: number; product_id: string }[],
   lineasOc: string[],
   actor: string
 ) {
   const { data: yaVinculada } = await db().from("stock_entries").select("purchase_order_id").eq("id", entrada).maybeSingle();
   if (yaVinculada?.purchase_order_id) return; // reintento del mismo ingreso: no sumar dos veces
   await db().from("stock_entries").update({ purchase_order_id: oc }).eq("id", entrada);
-  const { data: actuales } = await db().from("purchase_order_lines").select("id, quantity, received_qty").eq("order_id", oc);
+  const { data: actuales } = await db().from("purchase_order_lines").select("id, quantity, received_qty, product_id").eq("order_id", oc);
+  // las líneas de la orden sin producto quedan vinculadas al que se eligió al recibir
+  for (let i = 0; i < lineas.length; i++) {
+    const a = (actuales ?? []).find((x) => x.id === lineasOc[i]);
+    if (a && !a.product_id && lineas[i].product_id) {
+      await db().from("purchase_order_lines").update({ product_id: lineas[i].product_id }).eq("id", a.id);
+    }
+  }
   const porLinea = new Map<string, number>();
   lineas.forEach((l, i) => {
     const id = lineasOc[i];
