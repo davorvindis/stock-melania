@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import {
   filtrarBalances,
   getBalances,
+  getBalancesAt,
   getProducts,
   isAvailable,
   productosSinStock,
@@ -24,8 +25,9 @@ function styleHeader(ws: ExcelJS.Worksheet) {
 }
 
 // stock con los mismos filtros que la pantalla: total por producto, detalle y productos en 0
-export async function stockWorkbook(f: FiltrosStock = {}): Promise<ArrayBuffer> {
-  const [balances, productos] = await Promise.all([getBalances(), getProducts()]);
+// fecha (pasada): stock al cierre de ese día, reconstruido desde los movimientos
+export async function stockWorkbook(f: FiltrosStock = {}, fecha?: string | null): Promise<ArrayBuffer> {
+  const [balances, productos] = await Promise.all([fecha ? getBalancesAt(fecha) : getBalances(), getProducts()]);
   const filas = filtrarBalances(balances, f);
   const wb = new ExcelJS.Workbook();
 
@@ -55,7 +57,7 @@ export async function stockWorkbook(f: FiltrosStock = {}): Promise<ArrayBuffer> 
       producto: g.b.product.name,
       tipo: TIPOS_PRODUCTO_LABEL[g.b.product.type] ?? g.b.product.type,
       total: g.total,
-      disponible: g.disp,
+      disponible: fecha ? "" : g.disp, // el disponible de un día pasado no se conoce
       unidad: g.b.product.unit,
       lotes: [...g.lotes.entries()].map(([l, q]) => `${l}: ${q}`).join(" · "),
     });
@@ -81,12 +83,12 @@ export async function stockWorkbook(f: FiltrosStock = {}): Promise<ArrayBuffer> 
       producto: b.product.name,
       tipo: TIPOS_PRODUCTO_LABEL[b.product.type] ?? b.product.type,
       lote: b.lot?.code ?? "",
-      estado: b.lot ? (b.lot.sealed && b.lot.status === "ACTIVE" ? "Caja cerrada" : LOT_STATUS_LABELS[b.lot.status]) : "",
+      estado: fecha ? "" : b.lot ? (b.lot.sealed && b.lot.status === "ACTIVE" ? "Caja cerrada" : LOT_STATUS_LABELS[b.lot.status]) : "",
       vence: b.lot?.expires_on ?? "",
       ubicacion: b.location.name,
       cantidad: Number(b.quantity),
       unidad: b.product.unit,
-      disponible: isAvailable(b) ? "Sí" : "No",
+      disponible: fecha ? "" : isAvailable(b) ? "Sí" : "No",
     });
   }
   styleHeader(ws);

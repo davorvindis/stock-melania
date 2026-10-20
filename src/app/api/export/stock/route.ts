@@ -11,8 +11,12 @@ export async function GET(request: Request) {
   const f = Object.fromEntries(
     (["q", "lote", "ubicacion", "tipo", "disp"] as const).map((k) => [k, sp.get(k) ?? undefined])
   );
-  const buf = await stockWorkbook(f);
-  const fecha = new Date().toISOString().slice(0, 10);
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  const pedida = sp.get("fecha");
+  const historica = pedida && /^\d{4}-\d{2}-\d{2}$/.test(pedida) && pedida < hoy ? pedida : null;
+  if (historica) delete f.disp;
+  const buf = await stockWorkbook(f, historica);
+  const fecha = historica ?? hoy;
   return new Response(buf, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -1,6 +1,6 @@
 import { can, requireSection } from "@/lib/auth";
 import Link from "next/link";
-import { enCajaCerrada, filtrarBalances, getBalances, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
+import { enCajaCerrada, filtrarBalances, getBalances, getBalancesAt, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
 import { ajustarStock, cambiarCajaLote } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
@@ -169,7 +169,17 @@ function LotesChips({
 }
 
 // desglose por lote y ubicación dentro de la vista por producto
-function DetalleFilas({ filas, puedeAjustar, puedeAbrir }: { filas: BalanceRow[]; puedeAjustar: boolean; puedeAbrir: boolean }) {
+function DetalleFilas({
+  filas,
+  puedeAjustar,
+  puedeAbrir,
+  historico,
+}: {
+  filas: BalanceRow[];
+  puedeAjustar: boolean;
+  puedeAbrir: boolean;
+  historico: boolean;
+}) {
   return (
     <details className="mt-1">
       <summary className="cursor-pointer text-xs font-medium text-rose-deep hover:underline">
@@ -181,7 +191,7 @@ function DetalleFilas({ filas, puedeAjustar, puedeAbrir }: { filas: BalanceRow[]
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 {b.lot ? `Lote ${b.lot.code}` : "Sin lote"} · {b.location.name}
-                {b.location.is_quarantine ? " ⚠" : ""} <LotBadge b={b} />
+                {b.location.is_quarantine ? " ⚠" : ""} {!historico && <LotBadge b={b} />}
               </span>
               <span className="flex items-center gap-2 font-semibold">
                 {puedeAbrir && b.lot?.sealed && <AbrirCaja lotId={b.lot.id} />}
@@ -207,16 +217,26 @@ type SP = {
   lote?: string;
   tipo?: string;
   vista?: string;
+  fecha?: string;
   sort?: string;
   dir?: string;
 };
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireSection("stock");
-  const puedeAjustar = user.role === "ADMIN" || user.role === "MANAGER";
-  const puedeAbrir = can(user, "ingresos");
   const sp = await searchParams;
-  const [balances, locations, productos] = await Promise.all([getBalances(), getLocations(), getProducts()]);
+  // stock a una fecha pasada: se reconstruye desde los movimientos (solo lectura)
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  const fecha = sp.fecha && /^\d{4}-\d{2}-\d{2}$/.test(sp.fecha) && sp.fecha < hoy ? sp.fecha : null;
+  const historico = !!fecha;
+  if (historico) delete sp.disp; // el disponible de un día pasado no se puede saber (estados de lote cambian)
+  const puedeAjustar = !historico && (user.role === "ADMIN" || user.role === "MANAGER");
+  const puedeAbrir = !historico && can(user, "ingresos");
+  const [balances, locations, productos] = await Promise.all([
+    fecha ? getBalancesAt(fecha) : getBalances(),
+    getLocations(),
+    getProducts(),
+  ]);
 
   // productos activos sin stock en ninguna ubicación (no tienen renglón en balances)
   const conStock = new Set(balances.map((b) => b.product.id));
@@ -278,7 +298,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     const venc = b.lot?.expires_on ?? null;
     if (venc && (!g.vence || venc < g.vence)) g.vence = venc;
     const k = b.lot?.id ?? "";
-    const l = g.lotes.get(k) ?? { id: b.lot?.id ?? null, code: b.lot?.code ?? null, qty: 0, vence: venc, cerrado: !!b.lot?.sealed };
+    const l = g.lotes.get(k) ?? { id: b.lot?.id ?? null, code: b.lot?.code ?? null, qty: 0, vence: venc, cerrado: !historico && !!b.lot?.sealed };
     l.qty += q;
     g.lotes.set(k, l);
     g.filas.push(b);
@@ -324,6 +344,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           href={`/api/export/stock${(() => {
             const p = new URLSearchParams();
             for (const k of ["q", "lote", "ubicacion", "tipo", "disp"] as const) if (sp[k]) p.set(k, sp[k]!);
+            if (fecha) p.set("fecha", fecha);
             return p.toString() ? `?${p.toString()}` : "";
           })()}`}
           className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush"
@@ -347,7 +368,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         </Link>
       </div>
 
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-4 lg:grid-cols-8">
         {porLote && <input type="hidden" name="vista" value="lote" />}
         <input
           type="search"
@@ -380,13 +401,27 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-2 text-sm text-soft">
+          <span className="shrink-0">Stock al día</span>
+          <input
+            type="date"
+            name="fecha"
+            defaultValue={fecha ?? ""}
+            min="2026-09-30"
+            max={hoy}
+            aria-label="Ver el stock que había al cierre de un día"
+            className={input}
+          />
+        </label>
         <div className="flex gap-2 sm:col-span-2">
-          <select name="disp" defaultValue={sp.disp ?? ""} className={input}>
-            <option value="">Disponible y no disp.</option>
-            <option value="si">Solo disponible</option>
-            <option value="no">Solo no disponible</option>
-            <option value="cero">Solo productos en 0</option>
-          </select>
+          {!historico && (
+            <select name="disp" defaultValue={sp.disp ?? ""} className={input}>
+              <option value="">Disponible y no disp.</option>
+              <option value="si">Solo disponible</option>
+              <option value="no">Solo no disponible</option>
+              <option value="cero">Solo productos en 0</option>
+            </select>
+          )}
           <button
             type="submit"
             className="shrink-0 rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper"
@@ -397,6 +432,24 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       </form>
 
       <Flash ok={sp.ok} error={sp.error} />
+      {fecha && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>
+            📅 Estás viendo el stock que había al <b>cierre del {fecha.split("-").reverse().join("/")}</b>, calculado con los
+            movimientos registrados hasta ese día. Es solo consulta: no se puede ajustar.
+          </span>
+          <Link
+            href={(() => {
+              const p = new URLSearchParams();
+              for (const [k, v] of Object.entries(sp)) if (v && !["fecha", "ok", "error"].includes(k)) p.set(k, v);
+              return p.toString() ? `/stock?${p.toString()}` : "/stock";
+            })()}
+            className="shrink-0 font-semibold text-rose-deep hover:underline"
+          >
+            Volver a hoy →
+          </Link>
+        </div>
+      )}
       <p className="mb-3 text-sm text-soft">
         {porLote ? `${rows.length} renglón(es)` : `${listaGrupos.length} producto(s)`} · {fmtQty(total)} unidades
         {sp.lote && ` · lote "${sp.lote}"`}
@@ -419,13 +472,13 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                   </span>
                 </div>
                 <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} puedeAbrir={puedeAbrir} />
-                {g.disponible !== g.total && (
+                {!historico && g.disponible !== g.total && (
                   <div className="mt-1 text-xs font-medium text-amber-700">
                     Disponible: {fmtQty(g.disponible)}
                     {g.cerrado > 0 && ` · 🔒 ${fmtQty(g.cerrado)} en caja cerrada`}
                   </div>
                 )}
-                <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} />
+                <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} historico={historico} />
               </div>
             ))}
             {listaGrupos.length === 0 && (
@@ -446,7 +499,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     <th className={th}>Lotes</th>
                     <SortTh col="vence" sp={sp} path="/stock">Próx. venc.</SortTh>
                     <SortTh col="cantidad" sp={sp} path="/stock">Total</SortTh>
-                    <th className={th}>Disponible</th>
+                    {!historico && <th className={th}>Disponible</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -455,7 +508,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <td className={`${td} font-mono text-xs`}>{g.product.sku}</td>
                       <td className={td}>
                         {g.product.name}
-                        <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} />
+                        <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} historico={historico} />
                       </td>
                       <td className={td}>
                         <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} puedeAbrir={puedeAbrir} />
@@ -464,17 +517,19 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <td className={`${td} font-semibold`}>
                         {fmtQty(g.total)} <span className="text-xs text-soft">{g.product.unit}</span>
                       </td>
+                      {!historico && (
                       <td className={`${td} ${g.disponible !== g.total ? "font-medium text-amber-700" : ""}`}>
                         {fmtQty(g.disponible)}
                         {g.cerrado > 0 && (
                           <div className="text-xs font-normal text-amber-800">🔒 {fmtQty(g.cerrado)} en caja cerrada</div>
                         )}
                       </td>
+                      )}
                     </tr>
                   ))}
                   {listaGrupos.length === 0 && (
                     <tr>
-                      <td className={td} colSpan={6}>
+                      <td className={td} colSpan={historico ? 5 : 6}>
                         Nada coincide con la búsqueda o filtros.
                       </td>
                     </tr>
@@ -494,7 +549,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           <div key={b.id} className="rounded-lg border border-blush-100 bg-white p-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">{b.product.name}</span>
-              <LotBadge b={b} />
+              {!historico && <LotBadge b={b} />}
             </div>
             <div className="mt-0.5 font-mono text-xs text-soft">{b.product.sku}</div>
             <div className="mt-2 flex items-baseline justify-between gap-2">
@@ -512,9 +567,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                 {b.lot ? `Lote ${b.lot.code}` : "Sin lote"}
                 {b.lot?.expires_on ? ` · vence ${fmtDate(b.lot.expires_on)}` : ""}
               </span>
-              <span className={isAvailable(b) ? "" : "font-medium text-amber-700"}>
-                {isAvailable(b) ? "Disponible" : b.lot?.sealed ? "En caja cerrada" : "No disponible"}
-              </span>
+              {!historico && (
+                <span className={isAvailable(b) ? "" : "font-medium text-amber-700"}>
+                  {isAvailable(b) ? "Disponible" : b.lot?.sealed ? "En caja cerrada" : "No disponible"}
+                </span>
+              )}
             </div>
             {puedeAbrir && b.lot?.sealed && (
               <div className="mt-2">
@@ -540,11 +597,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                 <SortTh col="sku" sp={sp} path="/stock">SKU</SortTh>
                 <SortTh col="producto" sp={sp} path="/stock">Producto</SortTh>
                 <SortTh col="lote" sp={sp} path="/stock">Lote</SortTh>
-                <th className={th}>Estado lote</th>
+                {!historico && <th className={th}>Estado lote</th>}
                 <SortTh col="vence" sp={sp} path="/stock">Vence</SortTh>
                 <SortTh col="ubicacion" sp={sp} path="/stock">Ubicación</SortTh>
                 <SortTh col="cantidad" sp={sp} path="/stock">Cantidad</SortTh>
-                <th className={th}>Disponible</th>
+                {!historico && <th className={th}>Disponible</th>}
                 {puedeAjustar && <th className={th}></th>}
               </tr>
             </thead>
@@ -554,9 +611,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                   <td className={`${td} font-mono text-xs`}>{b.product.sku}</td>
                   <td className={td}>{b.product.name}</td>
                   <td className={td}>{b.lot?.code ?? "—"}</td>
-                  <td className={td}>
-                    <LotBadge b={b} />
-                  </td>
+                  {!historico && (
+                    <td className={td}>
+                      <LotBadge b={b} />
+                    </td>
+                  )}
                   <td className={td}>{fmtDate(b.lot?.expires_on ?? null)}</td>
                   <td className={td}>
                     {b.location.name}
@@ -567,6 +626,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                   <td className={`${td} font-semibold`}>
                     {fmtQty(b.quantity)} <span className="text-xs text-soft">{b.product.unit}</span>
                   </td>
+                  {!historico && (
                   <td className={td}>
                     {isAvailable(b) ? "Sí" : b.lot?.sealed ? "Caja cerrada" : "No"}
                     {puedeAbrir && b.lot?.sealed && (
@@ -575,6 +635,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       </div>
                     )}
                   </td>
+                  )}
                   {puedeAjustar && (
                     <td className={td}>
                       <AjusteForm b={b} />
@@ -584,7 +645,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td className={td} colSpan={puedeAjustar ? 9 : 8}>
+                  <td className={td} colSpan={(puedeAjustar ? 9 : 8) - (historico ? 2 : 0)}>
                     Nada coincide con la búsqueda o filtros.
                   </td>
                 </tr>

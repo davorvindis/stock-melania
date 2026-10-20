@@ -21,6 +21,33 @@ export async function getBalances(): Promise<BalanceRow[]> {
   return (data ?? []) as unknown as BalanceRow[];
 }
 
+// stock al cierre de un día (hora Argentina), reconstruido desde los movimientos.
+// Mismo formato que getBalances para reusar filtros, pantalla y Excel.
+export async function getBalancesAt(fecha: string): Promise<BalanceRow[]> {
+  const cli = db();
+  const [saldos, productos, lotes, ubicaciones] = await Promise.all([
+    cli.rpc("stock_at", { p_date: fecha }),
+    cli.from("products").select("id, sku, name, unit, min_stock, type"),
+    cli.from("lots").select("id, code, status, expires_on, sealed"),
+    cli.from("locations").select("id, name, is_quarantine"),
+  ]);
+  for (const r of [saldos, productos, lotes, ubicaciones]) if (r.error) throw new Error(r.error.message);
+  const prod = new Map((productos.data ?? []).map((p) => [p.id, p]));
+  const lot = new Map((lotes.data ?? []).map((l) => [l.id, l]));
+  const loc = new Map((ubicaciones.data ?? []).map((l) => [l.id, l]));
+  type Saldo = { product_id: string; lot_id: string | null; location_id: string; quantity: number };
+  return ((saldos.data ?? []) as Saldo[])
+    .filter((x) => prod.has(x.product_id) && loc.has(x.location_id))
+    .map((x) => ({
+      id: `${x.product_id}|${x.lot_id ?? ""}|${x.location_id}`,
+      quantity: Number(x.quantity),
+      product: prod.get(x.product_id)!,
+      lot: x.lot_id ? ((lot.get(x.lot_id) as BalanceRow["lot"]) ?? null) : null,
+      location: loc.get(x.location_id)!,
+    }))
+    .sort((a, b) => b.quantity - a.quantity);
+}
+
 export type MovementRow = {
   id: string;
   occurred_at: string;
