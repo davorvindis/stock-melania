@@ -368,7 +368,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         </Link>
       </div>
 
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-4 lg:grid-cols-8">
+      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {porLote && <input type="hidden" name="vista" value="lote" />}
         <input
           type="search"
@@ -393,7 +393,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             </option>
           ))}
         </select>
-        <select name="ubicacion" defaultValue={sp.ubicacion ?? ""} className={input}>
+        <select name="ubicacion" defaultValue={sp.ubicacion ?? ""} className={`${input} lg:col-span-2`}>
           <option value="">Todas las ubicaciones</option>
           {locations.map((l) => (
             <option key={l.id} value={l.id}>
@@ -401,7 +401,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-2 text-sm text-soft">
+        <label className="flex items-center gap-2 text-sm text-soft sm:col-span-2">
           <span className="shrink-0">Stock al día</span>
           <input
             type="date"
@@ -410,7 +410,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             min="2026-09-30"
             max={hoy}
             aria-label="Ver el stock que había al cierre de un día"
-            className={input}
+            className={`${input} min-w-0`}
           />
         </label>
         <div className="flex gap-2 sm:col-span-2">
