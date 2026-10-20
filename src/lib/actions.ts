@@ -55,6 +55,7 @@ export async function registrarIngreso(formData: FormData) {
   const vencimientos = formData.getAll("ing_vencimiento").map(String);
   const costos = formData.getAll("ing_costo").map(String);
   const lineasOc = formData.getAll("ing_oc_linea").map(String);
+  const cerradas = formData.getAll("ing_cerrada").map(String);
   // ingreso que recibe una orden de compra (solo quien ve Compras)
   const ocParam = String(formData.get("oc") ?? "");
   const oc = can(user, "compras") && uuid.safeParse(ocParam).success ? ocParam : null;
@@ -67,6 +68,8 @@ export async function registrarIngreso(formData: FormData) {
     if (!(qty > 0)) backWithError(back, `Producto ${n}: la cantidad debe ser mayor a 0`);
     const costo = costos[i]?.trim() ? Number(costos[i]) : null;
     if (costo !== null && !(costo >= 0)) backWithError(back, `Producto ${n}: costo inválido`);
+    const sealed = cerradas[i] === "1";
+    if (sealed && !lotes[i]?.trim()) backWithError(back, `Producto ${n}: para dejarlo en caja cerrada indicá el número de lote`);
     lineas.push({
       product_id: productos[i],
       lot_code: lotes[i]?.trim() || null,
@@ -75,6 +78,7 @@ export async function registrarIngreso(formData: FormData) {
       unit_cost: costo,
       total_cost: null,
       location_id: d.ubicacion,
+      sealed,
     });
   }
   if (lineas.length === 0) backWithError(back, "Agregá al menos un producto");
@@ -123,11 +127,11 @@ export async function registrarIngreso(formData: FormData) {
 
   // ¿alguno de estos productos tiene preventas pendientes? → pantalla de reparto
   let hayPreventa = false;
-  if (entrada) {
+  if (entrada && lineas.some((l) => !l.sealed)) {
     const { count } = await db()
       .from("preorder_lines")
       .select("id, preorder:preorders!inner(status)", { count: "exact", head: true })
-      .in("product_id", lineas.map((l) => l.product_id))
+      .in("product_id", lineas.filter((l) => !l.sealed).map((l) => l.product_id))
       .in("preorder.status", ["PENDIENTE", "PARCIAL"]);
     hayPreventa = (count ?? 0) > 0;
   }
@@ -141,7 +145,11 @@ export async function registrarIngreso(formData: FormData) {
     if (hayPreventa) irAlReparto(`/compras/${oc}`, `Ingreso registrado${avisoArchivos}`);
     okRedirect(`/compras/${oc}`, `Ingreso registrado y orden de compra actualizada${avisoArchivos}`);
   }
-  const msg = (lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado") + avisoArchivos;
+  const nCerradas = lineas.filter((l) => l.sealed).length;
+  const msg =
+    (lineas.length > 1 ? `Ingreso registrado (${lineas.length} productos)` : "Ingreso registrado") +
+    (nCerradas ? ` · ${nCerradas === 1 ? "1 lote quedó" : `${nCerradas} lotes quedaron`} en caja cerrada` : "") +
+    avisoArchivos;
   if (hayPreventa) irAlReparto("/ingresos/nuevo", msg);
   okRedirect("/ingresos/nuevo", msg);
 }
@@ -590,6 +598,19 @@ export async function cambiarEstadoLote(formData: FormData) {
   });
   if (error) backWithError(back, error.message);
   okRedirect(back, "Estado del lote actualizado");
+}
+
+// caja cerrada: abrir el lote para poder venderlo (o volver a cerrarlo)
+export async function cambiarCajaLote(formData: FormData) {
+  const user = await requireSection("ingresos");
+  const lote = uuid.safeParse(String(formData.get("lote") ?? ""));
+  const volver = String(formData.get("volver") ?? "");
+  const back = volver.startsWith("/") ? volver.split("?")[0] : "/stock";
+  if (!lote.success) backWithError(back, "Lote inválido");
+  const cerrar = formData.get("accion") === "cerrar";
+  const { error } = await db().rpc("set_lot_sealed", { p_lot: lote.data, p_sealed: cerrar, p_actor: user.alias });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, cerrar ? "Caja cerrada: el lote no se puede vender hasta abrirla" : "Caja abierta: el lote ya está disponible para vender");
 }
 
 // asigna nro de lote + vencimiento a stock existente (sin lote o de otro lote).

@@ -81,7 +81,7 @@ export async function stockWorkbook(f: FiltrosStock = {}): Promise<ArrayBuffer> 
       producto: b.product.name,
       tipo: TIPOS_PRODUCTO_LABEL[b.product.type] ?? b.product.type,
       lote: b.lot?.code ?? "",
-      estado: b.lot ? LOT_STATUS_LABELS[b.lot.status] : "",
+      estado: b.lot ? (b.lot.sealed && b.lot.status === "ACTIVE" ? "Caja cerrada" : LOT_STATUS_LABELS[b.lot.status]) : "",
       vence: b.lot?.expires_on ?? "",
       ubicacion: b.location.name,
       cantidad: Number(b.quantity),

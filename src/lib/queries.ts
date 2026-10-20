@@ -5,7 +5,7 @@ export type BalanceRow = {
   id: string;
   quantity: number;
   product: { id: string; sku: string; name: string; unit: string; min_stock: number; type: string };
-  lot: { id: string; code: string; status: LotStatus; expires_on: string | null } | null;
+  lot: { id: string; code: string; status: LotStatus; expires_on: string | null; sealed: boolean } | null;
   location: { id: string; name: string; is_quarantine: boolean };
 };
 
@@ -13,7 +13,7 @@ export async function getBalances(): Promise<BalanceRow[]> {
   const { data, error } = await db()
     .from("stock_balances")
     .select(
-      "id, quantity, product:products(id, sku, name, unit, min_stock, type), lot:lots(id, code, status, expires_on), location:locations(id, name, is_quarantine)"
+      "id, quantity, product:products(id, sku, name, unit, min_stock, type), lot:lots(id, code, status, expires_on, sealed), location:locations(id, name, is_quarantine)"
     )
     .gt("quantity", 0)
     .order("quantity", { ascending: false });
@@ -207,8 +207,13 @@ export function productosSinStock(
 }
 
 export function isAvailable(b: BalanceRow): boolean {
-  const lotOk = !b.lot || b.lot.status === "ACTIVE";
+  const lotOk = !b.lot || (b.lot.status === "ACTIVE" && !b.lot.sealed);
   return lotOk && !b.location.is_quarantine;
+}
+
+// lote en caja cerrada: es stock propio y sano, pero no se usa hasta abrir la caja
+export function enCajaCerrada(b: BalanceRow): boolean {
+  return !!b.lot?.sealed && b.lot.status === "ACTIVE" && !b.location.is_quarantine;
 }
 
 // ── Lotes ───────────────────────────────────────────────────────────
@@ -217,6 +222,9 @@ export type LotRow = {
   id: string;
   code: string;
   status: LotStatus;
+  sealed: boolean;
+  opened_at: string | null;
+  opened_by: string | null;
   manufactured_on: string | null;
   expires_on: string | null;
   notes: string | null;
@@ -227,7 +235,7 @@ export type LotRow = {
 export async function getLots(): Promise<LotRow[]> {
   const { data, error } = await db()
     .from("lots")
-    .select("id, code, status, manufactured_on, expires_on, notes, created_at, product:products(id, sku, name, unit)")
+    .select("id, code, status, sealed, opened_at, opened_by, manufactured_on, expires_on, notes, created_at, product:products(id, sku, name, unit)")
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as LotRow[];
@@ -238,7 +246,7 @@ export async function getLotDetail(id: string) {
   const [lot, movements, balances, entryLines] = await Promise.all([
     cli
       .from("lots")
-      .select("id, code, status, manufactured_on, expires_on, notes, created_at, product:products(id, sku, name, unit)")
+      .select("id, code, status, sealed, opened_at, opened_by, manufactured_on, expires_on, notes, created_at, product:products(id, sku, name, unit)")
       .eq("id", id)
       .single(),
     cli

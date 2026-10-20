@@ -89,7 +89,7 @@ export type Asignacion = {
 export async function propuestaReparto(entryId: string) {
   const { data: entry } = await db()
     .from("stock_entries")
-    .select("id, entry_date, lines:stock_entry_lines(product_id, lot_id, location_id, quantity, product:products(name, unit), lot:lots(code), location:locations(name))")
+    .select("id, entry_date, lines:stock_entry_lines(product_id, lot_id, location_id, quantity, product:products(name, unit), lot:lots(code, sealed), location:locations(name))")
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return null;
@@ -99,10 +99,11 @@ export async function propuestaReparto(entryId: string) {
     location_id: string;
     quantity: number;
     product: { name: string; unit: string };
-    lot: { code: string } | null;
+    lot: { code: string; sealed: boolean } | null;
     location: { name: string };
   };
-  const lineas = (entry.lines ?? []) as unknown as L[];
+  // lo que entró en caja cerrada no se reparte hasta abrir la caja
+  const lineas = ((entry.lines ?? []) as unknown as L[]).filter((l) => !l.lot?.sealed);
   const pend = await getPendientes([...new Set(lineas.map((l) => l.product_id))]);
   const porProducto = new Map<string, { nombre: string; unidad: string; ingresado: number; prevendido: number; asignaciones: Asignacion[] }>();
   for (const l of lineas) {

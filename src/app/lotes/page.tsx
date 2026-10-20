@@ -204,8 +204,13 @@ export default async function Lotes({ searchParams }: { searchParams: Promise<SP
                 <span className="min-w-0 truncate font-medium">
                   {l.code} <span className="font-normal text-soft">· {l.product.name}</span>
                 </span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${lotBadgeClass(l.status)}`}>
-                  {LOT_STATUS_LABELS[l.status]}
+                <span className="flex shrink-0 gap-1">
+                  {l.sealed && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">🔒 Caja cerrada</span>
+                  )}
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${lotBadgeClass(l.status)}`}>
+                    {LOT_STATUS_LABELS[l.status]}
+                  </span>
                 </span>
               </div>
               <div className="mt-1 flex items-baseline justify-between gap-2 text-xs text-soft">

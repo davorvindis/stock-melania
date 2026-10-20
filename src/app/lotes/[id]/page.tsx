@@ -1,7 +1,7 @@
 import { SubmitButton } from "@/components/submit-button";
-import { requireSection } from "@/lib/auth";
+import { can, requireSection } from "@/lib/auth";
 import { getLotDetail } from "@/lib/queries";
-import { cambiarEstadoLote, editarVencimientoLote } from "@/lib/actions";
+import { cambiarCajaLote, cambiarEstadoLote, editarVencimientoLote } from "@/lib/actions";
 import {
   LOT_STATUS_LABELS,
   MOVEMENT_LABELS,
@@ -48,6 +48,9 @@ export default async function LoteDetalle({
         <span className={`rounded-full px-3 py-1 text-sm font-medium ${lotBadgeClass(lot.status)}`}>
           {LOT_STATUS_LABELS[lot.status]}
         </span>
+        {lot.sealed && (
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">🔒 Caja cerrada</span>
+        )}
         <span className="text-sm text-soft">
           {lot.product.sku}
           {lot.expires_on ? ` · vence ${fmtDate(lot.expires_on)}` : ""} · creado{" "}
@@ -101,6 +104,33 @@ export default async function LoteDetalle({
           </ul>
         </Card>
       </div>
+
+      {can(user, "ingresos") && (
+        <Card className={`mt-4 ${lot.sealed ? "border-amber-300 bg-amber-50" : ""}`}>
+          <h2 className="mb-1 font-semibold">{lot.sealed ? "🔒 Caja cerrada" : "Caja"}</h2>
+          <p className="mb-3 text-sm text-soft">
+            {lot.sealed
+              ? "Este lote cuenta en el stock total pero no se puede vender ni mover hasta abrir la caja. Abrila cuando se termine el lote anterior."
+              : lot.opened_at
+                ? `Caja abierta el ${fmtDateTime(lot.opened_at)}${lot.opened_by ? ` por ${lot.opened_by}` : ""}. El lote está disponible.`
+                : "El lote está disponible. Si llegó en una caja que todavía no hay que usar, podés cerrarla."}
+          </p>
+          <form action={cambiarCajaLote}>
+            <input type="hidden" name="lote" value={lot.id} />
+            <input type="hidden" name="volver" value={`/lotes/${lot.id}`} />
+            <input type="hidden" name="accion" value={lot.sealed ? "abrir" : "cerrar"} />
+            <SubmitButton
+              className={
+                lot.sealed
+                  ? "rounded-lg bg-amber-600 px-5 py-2.5 font-semibold text-white hover:bg-amber-700"
+                  : "rounded-lg border border-line bg-white px-5 py-2.5 text-sm font-medium text-rose-deep hover:border-blush"
+              }
+            >
+              {lot.sealed ? "Abrir caja" : "Cerrar caja"}
+            </SubmitButton>
+          </form>
+        </Card>
+      )}
 
       {(user.role === "ADMIN" || user.role === "MANAGER") && (
       <Card className="mt-4">

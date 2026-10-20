@@ -2,7 +2,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-export type OpcionBuscador = { value: string; label: string; grupo?: string };
+// deshabilitada: se muestra (ej. caja cerrada) pero no se puede elegir; el texto explica por qué
+export type OpcionBuscador = { value: string; label: string; grupo?: string; deshabilitada?: string };
 
 // sin acentos y en minúscula, para buscar "keratina" o "KERATINA" igual
 const normalizar = (t: string) =>
@@ -65,6 +66,7 @@ export function BuscadorProducto({
   }, [activo]);
 
   function elegir(o: OpcionBuscador) {
+    if (o.deshabilitada) return;
     onChange(o.value);
     setTexto("");
     setAbierto(false);
@@ -175,13 +177,15 @@ export function BuscadorProducto({
                 data-i={i}
                 role="option"
                 aria-selected={o.value === value}
+                aria-disabled={!!o.deshabilitada}
                 onMouseEnter={() => setActivo(i)}
                 onClick={() => elegir(o)}
                 className={`block w-full px-3 py-2 text-left text-sm ${
-                  i === activo ? "bg-blush-100" : ""
+                  o.deshabilitada ? "cursor-not-allowed bg-stone-50 opacity-60" : i === activo ? "bg-blush-100" : ""
                 } ${o.value === value ? "font-semibold" : ""}`}
               >
                 <EtiquetaOpcion label={o.label} />
+                {o.deshabilitada && <span className="block text-xs font-medium text-amber-800">{o.deshabilitada}</span>}
               </button>
             </li>
           ))}

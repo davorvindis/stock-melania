@@ -3,7 +3,7 @@ import { requireUser, can } from "@/lib/auth";
 import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/ventas";
 import { contarPendientesVacaciones } from "@/lib/personal";
 import { getPendientes } from "@/lib/preventa";
-import { getBalances, getMovements, getCounts, isAvailable } from "@/lib/queries";
+import { getBalances, getMovements, getCounts, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
 import { MovementCard, OrigenDestino } from "@/components/movement-card";
@@ -61,7 +61,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       min: Number(b.product.min_stock),
       qty: 0,
     };
-    if (isAvailable(b)) cur.qty += Number(b.quantity);
+    // la caja cerrada también cuenta: el producto está, solo falta abrirla
+    if (isAvailable(b) || enCajaCerrada(b)) cur.qty += Number(b.quantity);
     porProducto.set(b.product.id, cur);
   }
   const bajoMinimo = [...porProducto.values()].filter((p) => p.min > 0 && p.qty < p.min);

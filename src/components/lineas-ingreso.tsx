@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { BuscadorProducto, type OpcionBuscador } from "@/components/buscador-producto";
 
-type Linea = { key: number; producto: string; cantidad: string; costo: string; ocLinea?: string; detalle?: string };
-export type LineaInicial = Omit<Linea, "key">;
+type Linea = { key: number; producto: string; cantidad: string; costo: string; ocLinea?: string; detalle?: string; lote?: string; cerrada?: boolean };
+export type LineaInicial = Omit<Linea, "key" | "lote" | "cerrada">;
 
 const campo =
   "w-full rounded-lg border border-line bg-white px-3 py-2.5 text-base focus:border-blush focus:outline-none focus:ring-2 focus:ring-blush-100";
@@ -74,7 +74,14 @@ export function LineasIngreso({ productos, inicial }: { productos: OpcionBuscado
             </div>
             <div>
               <label className={etiqueta}>Lote</label>
-              <input type="text" name="ing_lote" placeholder="ej. L-2026-02" className={campo} />
+              <input
+                type="text"
+                name="ing_lote"
+                placeholder="ej. L-2026-02"
+                value={linea.lote ?? ""}
+                onChange={(e) => set(linea.key, { lote: e.target.value, ...(e.target.value.trim() ? {} : { cerrada: false }) })}
+                className={campo}
+              />
             </div>
             <div>
               <label className={etiqueta}>Vencimiento</label>
@@ -93,6 +100,29 @@ export function LineasIngreso({ productos, inicial }: { productos: OpcionBuscado
               />
             </div>
           </div>
+          {/* siempre se envía (aunque no esté tildado) para que las líneas no se desfasen */}
+          <input type="hidden" name="ing_cerrada" value={linea.cerrada ? "1" : ""} />
+          <label
+            className={`mt-2 flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm ${
+              linea.lote?.trim() ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+            } ${linea.cerrada ? "bg-amber-50 text-amber-900" : ""}`}
+          >
+            <input
+              type="checkbox"
+              checked={!!linea.cerrada}
+              disabled={!linea.lote?.trim()}
+              onChange={(e) => set(linea.key, { cerrada: e.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-rose-deep"
+            />
+            <span>
+              🔒 <b>Mantener caja cerrada</b>
+              <span className="block text-xs text-soft">
+                {linea.lote?.trim()
+                  ? "Suma al stock total pero no se puede vender hasta que abras la caja (primero se termina el lote anterior)."
+                  : "Cargá el número de lote para poder dejarlo en caja cerrada."}
+              </span>
+            </span>
+          </label>
           {subtotal(linea) > 0 && (
             <p className="mt-1 text-right text-xs text-soft">Subtotal: {pesos(subtotal(linea))}</p>
           )}

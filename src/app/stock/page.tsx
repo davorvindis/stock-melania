@@ -1,7 +1,7 @@
-import { requireSection } from "@/lib/auth";
+import { can, requireSection } from "@/lib/auth";
 import Link from "next/link";
-import { filtrarBalances, getBalances, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
-import { ajustarStock } from "@/lib/actions";
+import { enCajaCerrada, filtrarBalances, getBalances, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
+import { ajustarStock, cambiarCajaLote } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -96,8 +96,23 @@ function AjusteSinStock({ productId, ubicaciones }: { productId: string; ubicaci
   );
 }
 
+// caja cerrada → abrirla deja el lote disponible para vender
+function AbrirCaja({ lotId }: { lotId: string }) {
+  return (
+    <form action={cambiarCajaLote} className="inline">
+      <input type="hidden" name="lote" value={lotId} />
+      <input type="hidden" name="volver" value="/stock" />
+      <SubmitButton className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700">
+        Abrir caja
+      </SubmitButton>
+    </form>
+  );
+}
+
 function LotBadge({ b }: { b: BalanceRow }) {
   if (!b.lot) return <span>—</span>;
+  if (b.lot.sealed && b.lot.status === "ACTIVE")
+    return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">🔒 Caja cerrada</span>;
   return (
     <span
       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -109,25 +124,41 @@ function LotBadge({ b }: { b: BalanceRow }) {
   );
 }
 
+type LoteChip = { id: string | null; code: string | null; qty: number; vence: string | null; cerrado: boolean };
+
 function LotesChips({
   lotes,
   asignarHref,
+  puedeAbrir = false,
 }: {
-  lotes: { code: string | null; qty: number; vence: string | null }[];
+  lotes: LoteChip[];
   asignarHref?: string;
+  puedeAbrir?: boolean;
 }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
-      {lotes.map((l) => (
-        <span
-          key={l.code ?? "sin"}
-          className={`rounded-full px-2 py-0.5 text-xs ${l.code ? "bg-blush-100 text-rose-deeper" : "bg-amber-50 text-amber-800"}`}
-          title={l.vence ? `Vence ${fmtDate(l.vence)}` : undefined}
-        >
-          {l.code ?? "Sin lote"}: <b>{fmtQty(l.qty)}</b>
-          {l.vence ? ` · ${fmtDate(l.vence)}` : ""}
-        </span>
-      ))}
+      {lotes.map((l) =>
+        l.cerrado ? (
+          <span
+            key={l.id ?? "sin"}
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 py-0.5 pl-2 pr-0.5 text-xs text-amber-900"
+            title="No se puede vender hasta abrir la caja"
+          >
+            🔒 {l.code}: <b>{fmtQty(l.qty)}</b> en caja cerrada
+            {l.vence ? ` · ${fmtDate(l.vence)}` : ""}
+            {puedeAbrir && l.id && <AbrirCaja lotId={l.id} />}
+          </span>
+        ) : (
+          <span
+            key={l.id ?? "sin"}
+            className={`rounded-full px-2 py-0.5 text-xs ${l.code ? "bg-blush-100 text-rose-deeper" : "bg-amber-50 text-amber-800"}`}
+            title={l.vence ? `Vence ${fmtDate(l.vence)}` : undefined}
+          >
+            {l.code ?? "Sin lote"}: <b>{fmtQty(l.qty)}</b>
+            {l.vence ? ` · ${fmtDate(l.vence)}` : ""}
+          </span>
+        )
+      )}
       {asignarHref && lotes.some((l) => !l.code) && (
         <Link href={asignarHref} className="text-xs font-medium text-rose-deep hover:underline">
           Asignar lote →
@@ -138,7 +169,7 @@ function LotesChips({
 }
 
 // desglose por lote y ubicación dentro de la vista por producto
-function DetalleFilas({ filas, puedeAjustar }: { filas: BalanceRow[]; puedeAjustar: boolean }) {
+function DetalleFilas({ filas, puedeAjustar, puedeAbrir }: { filas: BalanceRow[]; puedeAjustar: boolean; puedeAbrir: boolean }) {
   return (
     <details className="mt-1">
       <summary className="cursor-pointer text-xs font-medium text-rose-deep hover:underline">
@@ -152,7 +183,10 @@ function DetalleFilas({ filas, puedeAjustar }: { filas: BalanceRow[]; puedeAjust
                 {b.lot ? `Lote ${b.lot.code}` : "Sin lote"} · {b.location.name}
                 {b.location.is_quarantine ? " ⚠" : ""} <LotBadge b={b} />
               </span>
-              <span className="font-semibold">{fmtQty(b.quantity)}</span>
+              <span className="flex items-center gap-2 font-semibold">
+                {puedeAbrir && b.lot?.sealed && <AbrirCaja lotId={b.lot.id} />}
+                {fmtQty(b.quantity)}
+              </span>
             </div>
             {puedeAjustar && <AjusteForm b={b} compact />}
           </li>
@@ -180,6 +214,7 @@ type SP = {
 export default async function StockPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireSection("stock");
   const puedeAjustar = user.role === "ADMIN" || user.role === "MANAGER";
+  const puedeAbrir = can(user, "ingresos");
   const sp = await searchParams;
   const [balances, locations, productos] = await Promise.all([getBalances(), getLocations(), getProducts()]);
 
@@ -224,24 +259,26 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     product: BalanceRow["product"];
     total: number;
     disponible: number;
+    cerrado: number;
     vence: string | null;
-    lotes: Map<string, { code: string | null; qty: number; vence: string | null }>;
+    lotes: Map<string, LoteChip>;
     filas: BalanceRow[];
   };
   const grupos = new Map<string, Grupo>();
   for (const b of rows) {
     let g = grupos.get(b.product.id);
     if (!g) {
-      g = { product: b.product, total: 0, disponible: 0, vence: null, lotes: new Map(), filas: [] };
+      g = { product: b.product, total: 0, disponible: 0, cerrado: 0, vence: null, lotes: new Map(), filas: [] };
       grupos.set(b.product.id, g);
     }
     const q = Number(b.quantity);
     g.total += q;
     if (isAvailable(b)) g.disponible += q;
+    if (enCajaCerrada(b)) g.cerrado += q;
     const venc = b.lot?.expires_on ?? null;
     if (venc && (!g.vence || venc < g.vence)) g.vence = venc;
     const k = b.lot?.id ?? "";
-    const l = g.lotes.get(k) ?? { code: b.lot?.code ?? null, qty: 0, vence: venc };
+    const l = g.lotes.get(k) ?? { id: b.lot?.id ?? null, code: b.lot?.code ?? null, qty: 0, vence: venc, cerrado: !!b.lot?.sealed };
     l.qty += q;
     g.lotes.set(k, l);
     g.filas.push(b);
@@ -265,7 +302,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     ? listaGrupos.sort((a, b) => cmp(keyGrupo(a, sp.sort!), keyGrupo(b, sp.sort!), sp.dir))
     : listaGrupos.sort((a, b) => b.total - a.total);
   const lotesOrdenados = (g: Grupo) =>
-    [...g.lotes.values()].sort((a, b) => (a.vence ?? "9999").localeCompare(b.vence ?? "9999"));
+    [...g.lotes.values()].sort(
+      (a, b) => Number(a.cerrado) - Number(b.cerrado) || (a.vence ?? "9999").localeCompare(b.vence ?? "9999")
+    );
 
   const linkVista = (v: string) => {
     const params = new URLSearchParams();
@@ -379,11 +418,14 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     {fmtQty(g.total)} <span className="font-sans text-xs text-soft">{g.product.unit}</span>
                   </span>
                 </div>
-                <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} />
+                <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} puedeAbrir={puedeAbrir} />
                 {g.disponible !== g.total && (
-                  <div className="mt-1 text-xs font-medium text-amber-700">Disponible: {fmtQty(g.disponible)}</div>
+                  <div className="mt-1 text-xs font-medium text-amber-700">
+                    Disponible: {fmtQty(g.disponible)}
+                    {g.cerrado > 0 && ` · 🔒 ${fmtQty(g.cerrado)} en caja cerrada`}
+                  </div>
                 )}
-                <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} />
+                <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} />
               </div>
             ))}
             {listaGrupos.length === 0 && (
@@ -413,10 +455,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <td className={`${td} font-mono text-xs`}>{g.product.sku}</td>
                       <td className={td}>
                         {g.product.name}
-                        <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} />
+                        <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} />
                       </td>
                       <td className={td}>
-                        <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} />
+                        <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} puedeAbrir={puedeAbrir} />
                       </td>
                       <td className={td}>{fmtDate(g.vence)}</td>
                       <td className={`${td} font-semibold`}>
@@ -424,6 +466,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       </td>
                       <td className={`${td} ${g.disponible !== g.total ? "font-medium text-amber-700" : ""}`}>
                         {fmtQty(g.disponible)}
+                        {g.cerrado > 0 && (
+                          <div className="text-xs font-normal text-amber-800">🔒 {fmtQty(g.cerrado)} en caja cerrada</div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -468,9 +513,14 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                 {b.lot?.expires_on ? ` · vence ${fmtDate(b.lot.expires_on)}` : ""}
               </span>
               <span className={isAvailable(b) ? "" : "font-medium text-amber-700"}>
-                {isAvailable(b) ? "Disponible" : "No disponible"}
+                {isAvailable(b) ? "Disponible" : b.lot?.sealed ? "En caja cerrada" : "No disponible"}
               </span>
             </div>
+            {puedeAbrir && b.lot?.sealed && (
+              <div className="mt-2">
+                <AbrirCaja lotId={b.lot.id} />
+              </div>
+            )}
             {puedeAjustar && <AjusteForm b={b} compact />}
           </div>
         ))}
@@ -517,7 +567,14 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                   <td className={`${td} font-semibold`}>
                     {fmtQty(b.quantity)} <span className="text-xs text-soft">{b.product.unit}</span>
                   </td>
-                  <td className={td}>{isAvailable(b) ? "Sí" : "No"}</td>
+                  <td className={td}>
+                    {isAvailable(b) ? "Sí" : b.lot?.sealed ? "Caja cerrada" : "No"}
+                    {puedeAbrir && b.lot?.sealed && (
+                      <div className="mt-1">
+                        <AbrirCaja lotId={b.lot.id} />
+                      </div>
+                    )}
+                  </td>
                   {puedeAjustar && (
                     <td className={td}>
                       <AjusteForm b={b} />

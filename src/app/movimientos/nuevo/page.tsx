@@ -30,8 +30,11 @@ export default async function NuevoMovimiento({
     value: `${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`,
     label: `${b.product.name}${b.lot ? ` · lote ${b.lot.code}` : ""} · ${b.location.name} (${fmtQty(
       b.quantity
-    )} ${b.product.unit})${!isAvailable(b) ? " ⚠ no disponible" : ""}`,
+    )} ${b.product.unit}${b.lot?.sealed ? " en caja cerrada" : ""})${!isAvailable(b) && !b.lot?.sealed ? " ⚠ no disponible" : ""}`,
+    deshabilitada: b.lot?.sealed ? "🔒 Caja cerrada: abrila desde Stock para poder usarla" : undefined,
   }));
+  // las cajas cerradas al final, debajo de los lotes que se vienen usando
+  opciones.sort((a, b) => Number(!!a.deshabilitada) - Number(!!b.deshabilitada));
 
   return (
     <div className="max-w-2xl">
