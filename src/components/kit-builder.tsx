@@ -10,6 +10,7 @@ export type ProductoCatalogo = {
   unit: string;
   type: string;
   category: string | null;
+  active?: boolean; // desactivado: solo aparece si ya estaba en el kit (para poder sacarlo)
 };
 
 type Item = { id: string; quantity: number };
@@ -54,6 +55,7 @@ export function KitBuilder({
     return productos.filter(
       (p) =>
         !enKit.has(p.id) &&
+        p.active !== false &&
         (!tipo || p.type === tipo) &&
         (!q ||
           p.name.toLowerCase().includes(q) ||
@@ -259,6 +261,11 @@ export function KitBuilder({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{p.name}</span>
                     <span className="block truncate font-mono text-xs text-soft">{p.sku}</span>
+                    {p.active === false && (
+                      <span className="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                        ⚠ Producto desactivado
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 items-center rounded-lg border border-line">
                     <button

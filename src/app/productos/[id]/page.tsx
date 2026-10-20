@@ -141,6 +141,16 @@ export default async function EditarProducto({
               ⚠ Este kit no tiene componentes: no se va a poder mover hasta que agregues al menos uno.
             </p>
           )}
+          {(() => {
+            const inactivos = componentes.filter((c) => todosProductos.some((x) => x.id === c.component.id && !x.active));
+            return inactivos.length > 0 ? (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                ⚠ Este kit usa {inactivos.length === 1 ? "un producto desactivado" : "productos desactivados"}:{" "}
+                <b>{inactivos.map((c) => c.component.name).join(", ")}</b>. Al armar kits se descuentan igual. Si ya no
+                van en el kit, sacalos con ✕ y guardá.
+              </p>
+            ) : null;
+          })()}
           {stockKit.some((b) => Number(b.quantity) > 0) && (
             <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
               Hay kits ya armados en stock. Si cambiás el contenido, al desarmarlos se devuelven los
@@ -151,7 +161,9 @@ export default async function EditarProducto({
             <input type="hidden" name="kit" value={p.id} />
             <KitBuilder
               key={componentes.map((c) => `${c.component.id}:${c.quantity}`).join(",")}
-              productos={todosProductos.filter((x) => x.active && x.type !== "KIT" && x.id !== p.id)}
+              productos={todosProductos.filter(
+                (x) => x.type !== "KIT" && x.id !== p.id && (x.active || componentes.some((c) => c.component.id === x.id))
+              )}
               inicial={componentes.map((c) => ({ id: c.component.id, quantity: Number(c.quantity) }))}
             />
             <SubmitButton className={button}>Guardar contenido del kit</SubmitButton>
