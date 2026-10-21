@@ -44,23 +44,24 @@ export const SECTIONS: readonly { key: string; label: string }[] = [
   { key: "vacaciones", label: "Vacaciones" },
   { key: "precios", label: "Historial de precios" },
   { key: "preventa", label: "Preventa" },
+  { key: "wix", label: "Equivalencias Wix" },
 ];
 
 const ROLE_DEFAULTS: Record<Role, Record<string, boolean>> = {
   ADMIN: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
     productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: true,
-    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false,
+    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false, wix: true,
   },
   MANAGER: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
     productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: false,
-    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false,
+    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false, wix: false,
   },
   OPERATOR: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
     productos: true, proveedores: true, ubicaciones: false, auditoria: false, configuracion: false,
-    ventas: false, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false,
+    ventas: false, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false, wix: false,
   },
 };
 

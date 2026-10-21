@@ -16,6 +16,7 @@ Pendiente: se define en Paso 2 (proyecto Supabase + migrations iniciales).
 - `adjustment_approvals`
 - `documents` (Storage privado, signed URLs)
 - `audit_logs` — append-only
-- `reservations`, `integration_events` — preparados para Wix V2
+- `channel_skus` + `channel_sku_lines` — equivalencias SKU de Wix → productos y cantidades (ver `docs/WIX_V2.md`)
+- `reservations`, `integration_events` — **todavía no creadas**: se crean al programar la integración con Wix
 
 Migrations versionadas en `supabase/migrations/`. Nunca aplicar migraciones destructivas directo en producción.

@@ -20,6 +20,7 @@ const items = [
   { href: "/compras", label: "Órdenes de compra", section: "compras" },
   { href: "/costos", label: "Costos", section: "costos" },
   { href: "/precios", label: "Precios", section: "precios" },
+  { href: "/equivalencias", label: "Equivalencias Wix", section: "wix" },
   { href: "/faltas", label: "Faltas y horas", section: "faltas" },
   { href: "/vacaciones", label: "Vacaciones", section: "vacaciones" },
   { href: "/configuracion", label: "Configuración", section: "configuracion" },
