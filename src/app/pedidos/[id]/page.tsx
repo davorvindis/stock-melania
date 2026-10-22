@@ -1,0 +1,173 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireSection } from "@/lib/auth";
+import { getDisponibles, getPedidoWix, pendientesItem } from "@/lib/wix/queries";
+import { getWixSettings } from "@/lib/wix/processor";
+import { actualizarPedidoDesdeWix, procesarPedido } from "@/lib/wix/actions";
+import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
+import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
+import { badgeEstado, demorado } from "@/components/pedido-badge";
+
+export const dynamic = "force-dynamic";
+
+export default async function PedidoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; error?: string }> }) {
+  await requireSection("pedidos");
+  const { id } = await params;
+  const sp = await searchParams;
+  const r = await getPedidoWix(id);
+  if (!r) notFound();
+  const { pedido: p, items, fulfillments } = r;
+  const settings = await getWixSettings();
+  const disp = p.location?.id ? await getDisponibles(p.location.id, items.flatMap((i) => i.reservations.map((x) => x.product.id))) : new Map();
+  const pendientes = items.map((i) => ({ item: i, pend: pendientesItem(i) })).filter((x) => x.pend > 0);
+  const puedeProcesar = (p.state === "RESERVED" || p.state === "PARTIAL") && pendientes.length > 0;
+  const siteId = process.env.WIX_SITE_ID;
+  const canal = p.channel_type === "POS" ? "Local (POS)" : p.channel_type === "BACKOFFICE_MERCHANT" ? "Manual en Wix" : "Tienda web";
+  const porItem = new Map<string, typeof fulfillments>();
+  for (const f of fulfillments) porItem.set(f.item_id, [...(porItem.get(f.item_id) ?? []), f]);
+
+  return (
+    <div>
+      <PageTitle>Pedido #{p.number ?? "—"}</PageTitle>
+      <Flash ok={sp.ok} error={sp.error} />
+      <Link href="/pedidos" className="text-sm text-rose-deep hover:underline">← Pedidos</Link>
+
+      {p.review_reason && (
+        <Card className="mt-3 border-amber-300 bg-amber-50">
+          <p className="text-sm"><b className="text-amber-900">⚠ A revisar:</b> {p.review_reason}</p>
+        </Card>
+      )}
+      {demorado(p) && (
+        <Card className="mt-3 border-red-300 bg-red-50">
+          <p className="text-sm font-medium text-red-800">Pagado hace más de 3 días y todavía no se procesó.</p>
+        </Card>
+      )}
+      {!settings.enabled && (
+        <Card className="mt-3 border-amber-200">
+          <p className="text-sm text-amber-800">La integración con Wix está <b>desconectada</b>: al procesar se descuenta el stock pero Wix no se entera.</p>
+        </Card>
+      )}
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <Card>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt className="text-soft">Estado</dt><dd>{badgeEstado(p)}</dd>
+            <dt className="text-soft">Canal</dt><dd>{canal}</dd>
+            <dt className="text-soft">Cliente</dt><dd>{p.customer ?? "—"}{p.email && <span className="text-soft"> · {p.email}</span>}</dd>
+            <dt className="text-soft">Fecha</dt><dd>{p.ordered_at ? fmtDateTime(p.ordered_at) : "—"}</dd>
+            <dt className="text-soft">Total</dt><dd>{fmtMoney(p.total)} {p.currency ?? ""}</dd>
+            <dt className="text-soft">Sale de</dt><dd>{p.location?.name ?? "—"}</dd>
+          </dl>
+        </Card>
+        <Card>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt className="text-soft">En Wix</dt><dd>{p.wix_status ?? "—"} · pago {p.payment_status ?? "—"} · {p.fulfillment_status ?? "—"}</dd>
+            <dt className="text-soft">Pagado</dt><dd>{p.paid_at ? fmtDateTime(p.paid_at) : "—"}</dd>
+            <dt className="text-soft">Procesado</dt><dd>{p.processed_at ? `${fmtDateTime(p.processed_at)} por ${p.processed_by}` : "—"}</dd>
+            <dt className="text-soft">Wix</dt>
+            <dd>
+              {siteId ? (
+                <a href={`https://manage.wix.com/dashboard/${siteId}/ecom-platform/order-details/${p.external_id}`} target="_blank" rel="noreferrer" className="text-rose-deep hover:underline">
+                  Ver en el panel de Wix ↗
+                </a>
+              ) : (
+                <span className="font-mono text-xs">{p.external_id}</span>
+              )}
+            </dd>
+          </dl>
+          <form action={actualizarPedidoDesdeWix} className="mt-2">
+            <input type="hidden" name="id" value={p.id} />
+            <SubmitButton className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-blush-50">Actualizar desde Wix</SubmitButton>
+          </form>
+        </Card>
+      </div>
+
+      <form action={procesarPedido}>
+        <input type="hidden" name="id" value={p.id} />
+        <Card className="mt-3">
+          <h2 className="mb-2 font-semibold">Productos</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className={th}>SKU Wix</th>
+                  <th className={th}>Producto</th>
+                  <th className={th}>Cant.</th>
+                  <th className={th}>Descuenta</th>
+                  <th className={th}>Disponible</th>
+                  <th className={th}>Estado</th>
+                  {puedeProcesar && <th className={th}>Despacho ahora</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it) => {
+                  const pend = pendientesItem(it);
+                  const hist = porItem.get(it.id) ?? [];
+                  return (
+                    <tr key={it.id} className="border-b border-blush-100 align-top">
+                      <td className={`${td} font-mono text-xs`}>{it.external_sku ?? "—"}</td>
+                      <td className={td}>{it.name ?? "—"}</td>
+                      <td className={`${td} font-semibold`}>{fmtQty(it.quantity)}</td>
+                      <td className={`${td} text-xs`}>
+                        {it.resolved
+                          ? it.reservations.map((rv) => (
+                              <div key={rv.id}>
+                                {fmtQty(rv.quantity)} × {rv.product.name} <span className="text-soft">({rv.product.sku}{rv.sale_type === "WHOLESALE_SALE" ? " · mayorista" : ""})</span>
+                              </div>
+                            ))
+                          : <span className="font-medium text-amber-800">{it.note ?? "Sin equivalencia"} · <Link href="/equivalencias" className="text-rose-deep hover:underline">cargar</Link></span>}
+                        {it.resolved && it.reservations.length === 0 && <span className="text-soft">(vendido directo)</span>}
+                      </td>
+                      <td className={`${td} text-xs`}>
+                        {it.reservations.map((rv) => {
+                          const d = disp.get(rv.product.id);
+                          const falta = d && d.available < 0;
+                          return (
+                            <div key={rv.id} className={falta ? "font-medium text-red-700" : ""}>
+                              {d ? `${fmtQty(d.sellable)} (reserv. ${fmtQty(d.reserved)})` : "0"}
+                            </div>
+                          );
+                        })}
+                      </td>
+                      <td className={`${td} text-xs`}>
+                        {it.reservations.length > 0 && (
+                          <div>
+                            {pend > 0 ? <span className="font-medium text-amber-800">{fmtQty(pend)} pendiente(s)</span> : <span className="text-emerald-800">completo</span>}
+                          </div>
+                        )}
+                        {hist.map((f) => (
+                          <div key={f.id} className="text-soft">
+                            {fmtQty(f.quantity)} · {f.actor} · {fmtDateTime(f.created_at)} {f.wix_synced ? "✓ Wix" : <span className="text-amber-800">(Wix pendiente)</span>}
+                          </div>
+                        ))}
+                        {it.note && it.resolved && <div className="text-amber-800">{it.note}</div>}
+                      </td>
+                      {puedeProcesar && (
+                        <td className={td}>
+                          {pend > 0 && (
+                            <input type="number" name={`item_${it.id}`} min={0} max={pend} step="1" defaultValue={pend} className={`${input} w-24`} />
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {puedeProcesar && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <SubmitButton className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
+                Marcar como procesado y despachado
+              </SubmitButton>
+              <span className="text-xs text-soft">
+                Queda registrado con tu usuario. Si despachás solo una parte, bajá las cantidades: el resto sigue reservado.
+              </span>
+            </div>
+          )}
+        </Card>
+      </form>
+    </div>
+  );
+}

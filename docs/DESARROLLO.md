@@ -75,7 +75,10 @@ Blanqueo de emergencia por consola (si un ADMIN queda afuera): con la service ke
 - Tras un deploy, pestañas abiertas viejas pueden fallar al enviar formularios (action id viejo): recargar.
 - El upsert de balances usa UPDATE-primero porque Postgres valida el CHECK (quantity >= 0) antes de resolver ON CONFLICT.
 - Kits: armado físico (assemble_kits consume componentes FEFO y suma stock del kit). El kit vendible es stock propio; no hay descuento "virtual" en la venta.
+- Reservas Wix: `apply_movement` rechaza egresos que dejen el vendible por debajo de lo reservado en esa ubicación (`reserved_qty`). Disponible real = `v_stock_disponible.available`.
+- En plpgsql, `case when … then 'LITERAL' else 'OTRO' end` asignado a una columna enum falla (resuelve a text): castear cada rama (`'X'::mi_enum`).
+- Rutas sin sesión (`/api/backup`, `/api/wix/*`) se listan en `src/proxy.ts` y se protegen solas (secreto o firma).
 
 ## Pendientes conocidos
 
-Tests automatizados en CI, backup programado de la DB (plan free retiene poco), adjuntos de remito/factura (Supabase Storage), integración Wix (docs/WIX_V2.md), PWA, escáner de códigos.
+Tests automatizados en CI, PWA, escáner de códigos. La integración Wix está en `docs/WIX_V2.md` (pendiente: puesta en marcha con credenciales y pruebas reales).

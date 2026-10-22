@@ -412,6 +412,7 @@ export const CATEGORIAS_AUDITORIA: Record<string, { label: string; prefijos: str
   usuarios: { label: "Usuarios y PIN", prefijos: ["user:"] },
   compras: { label: "Compras, costos y proveedores", prefijos: ["purchase_order:", "cost:", "supplier:", "import:"] },
   sistema: { label: "Ubicaciones, backups y sistema", prefijos: ["location:", "backup:", "system:"] },
+  wix: { label: "Wix (pedidos, equivalencias e integración)", prefijos: ["wix:", "channel_sku:"] },
 };
 
 export type MovimientoAuditado = {

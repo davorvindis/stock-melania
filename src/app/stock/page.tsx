@@ -1,5 +1,6 @@
 import { can, requireSection } from "@/lib/auth";
 import Link from "next/link";
+import { getReservados } from "@/lib/wix/queries";
 import { enCajaCerrada, filtrarBalances, getBalances, getBalancesAt, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
 import { ajustarStock, cambiarCajaLote } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
@@ -232,11 +233,15 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   if (historico) delete sp.disp; // el disponible de un día pasado no se puede saber (estados de lote cambian)
   const puedeAjustar = !historico && (user.role === "ADMIN" || user.role === "MANAGER");
   const puedeAbrir = !historico && can(user, "ingresos");
-  const [balances, locations, productos] = await Promise.all([
+  const [balances, locations, productos, reservados] = await Promise.all([
     fecha ? getBalancesAt(fecha) : getBalances(),
     getLocations(),
     getProducts(),
+    historico ? Promise.resolve(new Map<string, number>()) : getReservados(),
   ]);
+  // unidades reservadas por pedidos web (por producto, sumando sus ubicaciones)
+  const reservadoDe = (pid: string, filas: { location: { id: string } }[]) =>
+    [...new Set(filas.map((f) => f.location.id))].reduce((s, loc) => s + (reservados.get(`${pid}|${loc}`) ?? 0), 0);
 
   // productos activos sin stock en ninguna ubicación (no tienen renglón en balances)
   const conStock = new Set(balances.map((b) => b.product.id));
@@ -472,9 +477,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                   </span>
                 </div>
                 <LotesChips lotes={lotesOrdenados(g)} asignarHref={puedeAjustar ? `/lotes?producto=${g.product.id}` : undefined} puedeAbrir={puedeAbrir} />
-                {!historico && g.disponible !== g.total && (
+                {!historico && (g.disponible !== g.total || reservadoDe(g.product.id, g.filas) > 0) && (
                   <div className="mt-1 text-xs font-medium text-amber-700">
-                    Disponible: {fmtQty(g.disponible)}
+                    Disponible: {fmtQty(g.disponible - reservadoDe(g.product.id, g.filas))}
+                    {reservadoDe(g.product.id, g.filas) > 0 && ` · 🛒 ${fmtQty(reservadoDe(g.product.id, g.filas))} reservadas por pedidos web`}
                     {g.cerrado > 0 && ` · 🔒 ${fmtQty(g.cerrado)} en caja cerrada`}
                   </div>
                 )}
@@ -518,8 +524,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                         {fmtQty(g.total)} <span className="text-xs text-soft">{g.product.unit}</span>
                       </td>
                       {!historico && (
-                      <td className={`${td} ${g.disponible !== g.total ? "font-medium text-amber-700" : ""}`}>
-                        {fmtQty(g.disponible)}
+                      <td className={`${td} ${g.disponible !== g.total || reservadoDe(g.product.id, g.filas) > 0 ? "font-medium text-amber-700" : ""}`}>
+                        {fmtQty(g.disponible - reservadoDe(g.product.id, g.filas))}
+                        {reservadoDe(g.product.id, g.filas) > 0 && (
+                          <div className="text-xs font-normal text-amber-800">🛒 {fmtQty(reservadoDe(g.product.id, g.filas))} reservadas por pedidos web</div>
+                        )}
                         {g.cerrado > 0 && (
                           <div className="text-xs font-normal text-amber-800">🔒 {fmtQty(g.cerrado)} en caja cerrada</div>
                         )}

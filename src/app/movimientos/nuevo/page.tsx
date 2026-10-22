@@ -2,6 +2,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireSection, ubicacionFija } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { getBalances, getLocations, isAvailable } from "@/lib/queries";
+import { getReservados } from "@/lib/wix/queries";
 import { registrarMovimiento } from "@/lib/actions";
 import { fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label } from "@/components/ui";
@@ -17,7 +18,7 @@ export default async function NuevoMovimiento({
 }) {
   const user = await requireSection("movimientos");
   const { ok, error } = await searchParams;
-  const [balances, locations] = await Promise.all([getBalances(), getLocations()]);
+  const [balances, locations, reservados] = await Promise.all([getBalances(), getLocations(), getReservados()]);
 
   // stock del usuario: si está atado a una ubicación, solo esa; si no, la suya primero
   const fija = ubicacionFija(user);
@@ -30,7 +31,7 @@ export default async function NuevoMovimiento({
     value: `${b.product.id}|${b.lot?.id ?? ""}|${b.location.id}`,
     label: `${b.product.name}${b.lot ? ` · lote ${b.lot.code}` : ""} · ${b.location.name} (${fmtQty(
       b.quantity
-    )} ${b.product.unit}${b.lot?.sealed ? " en caja cerrada" : ""})${!isAvailable(b) && !b.lot?.sealed ? " ⚠ no disponible" : ""}`,
+    )} ${b.product.unit}${b.lot?.sealed ? " en caja cerrada" : ""}${(reservados.get(`${b.product.id}|${b.location.id}`) ?? 0) > 0 ? ` · 🛒 ${fmtQty(reservados.get(`${b.product.id}|${b.location.id}`)!)} reservadas web` : ""})${!isAvailable(b) && !b.lot?.sealed ? " ⚠ no disponible" : ""}`,
     deshabilitada: b.lot?.sealed ? "🔒 Caja cerrada: abrila desde Stock para poder usarla" : undefined,
   }));
   // las cajas cerradas al final, debajo de los lotes que se vienen usando

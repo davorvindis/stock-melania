@@ -5,6 +5,7 @@ import { contarPendientesVacaciones } from "@/lib/personal";
 import { getPendientes } from "@/lib/preventa";
 import { cierresSinVer } from "@/lib/caja";
 import { contarPendientesCF } from "@/lib/caja-fuerte";
+import { getAvisosWix } from "@/lib/wix/queries";
 import { getBalances, getMovements, getCounts, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -39,7 +40,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const vePreventa = can(user, "preventa");
   // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
   const veCierres = user.role === "ADMIN" && can(user, "caja");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes] = await Promise.all([
+  const vePedidos = can(user, "pedidos");
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -48,6 +50,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     vePreventa ? getPendientes() : Promise.resolve([]),
     veCierres ? cierresSinVer(user.id) : Promise.resolve([]),
     veCierres ? contarPendientesCF() : Promise.resolve(0),
+    vePedidos ? getAvisosWix() : Promise.resolve(null),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -166,6 +169,32 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         ) : null;
       })()}
 
+      {wix && wix.configurado && !wix.enabled && (
+        <Card className="mt-4 border-red-200">
+          <p className="text-sm">
+            <b className="text-red-800">Integración con Wix desconectada.</b> Las ventas del local se cargan a mano.{" "}
+            {user.role === "ADMIN" && <Link href="/wix" className="font-medium text-rose-deep hover:underline">Ver →</Link>}
+          </p>
+        </Card>
+      )}
+      {wix && wix.demorados.length > 0 && (
+        <Card className="mt-4 border-red-200">
+          <p className="text-sm">
+            <b className="text-red-800">{wix.demorados.length} pedido(s) web pagados hace más de 3 días sin procesar:</b>{" "}
+            {wix.demorados.slice(0, 6).map((p) => `#${p.number ?? "?"}`).join(", ")}
+            {wix.demorados.length > 6 && "…"}{" "}
+            <Link href="/pedidos" className="font-medium text-rose-deep hover:underline">Armar →</Link>
+          </p>
+        </Card>
+      )}
+      {wix && wix.revisar.length > 0 && (
+        <Card className="mt-4 border-amber-200">
+          <p className="text-sm">
+            <b className="text-amber-800">{wix.revisar.length} pedido(s) de Wix a revisar</b> (sin equivalencia, falta stock, reembolso o marcado en Wix).{" "}
+            <Link href="/pedidos?estado=todos&revisar=si" className="font-medium text-rose-deep hover:underline">Revisar →</Link>
+          </p>
+        </Card>
+      )}
       {vacPendientes > 0 && (
         <Card className="mt-4 border-amber-200">
           <p className="text-sm">

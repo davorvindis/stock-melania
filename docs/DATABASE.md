@@ -21,3 +21,8 @@ Pendiente: se define en Paso 2 (proyecto Supabase + migrations iniciales).
 - `reservations`, `integration_events` — **todavía no creadas**: se crean al programar la integración con Wix
 
 Migrations versionadas en `supabase/migrations/`. Nunca aplicar migraciones destructivas directo en producción.
+
+
+## Integración Wix (migraciones `wix_integracion`, `wix_cron`)
+
+Ver `docs/WIX_V2.md`. Tablas: `app_settings`, `integration_events`, `channel_orders`, `channel_order_items`, `reservations`, `channel_order_fulfillments`, `wix_sync_queue`; vista `v_stock_disponible` (físico, vendible, reservado, disponible por producto y ubicación). `reservations` nunca se borra: pasa a CONSUMED (egreso hecho) o RELEASED. `channel_order_fulfillments` registra quién despachó qué cantidad de cada ítem.

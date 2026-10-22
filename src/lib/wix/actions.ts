@@ -1,0 +1,160 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { z } from "zod";
+import { db } from "../db";
+import { requireRole, requireSection } from "../auth";
+import { getOrder } from "./client";
+import {
+  corridaSync,
+  descartarPausados,
+  mapearCatalogo,
+  patchWixSettings,
+  probarConexion,
+  procesarEvento,
+  procesarPendientes,
+  publicarInventario,
+  reanudarPausados,
+  reconciliarPedido,
+  sincronizarFulfillments,
+} from "./processor";
+
+function volverConError(path: string, msg: string): never {
+  redirect(`${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`);
+}
+function volverOk(path: string, msg: string): never {
+  revalidatePath("/", "layout");
+  redirect(`${path}${path.includes("?") ? "&" : "?"}ok=${encodeURIComponent(msg)}`);
+}
+const uuid = z.string().uuid();
+
+// ── Pedidos: marcar procesado (egreso real con responsable) ─────────
+
+export async function procesarPedido(formData: FormData) {
+  const user = await requireSection("pedidos");
+  const id = String(formData.get("id") ?? "");
+  if (!uuid.safeParse(id).success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id}`;
+  // cantidades por ítem (en unidades del ítem de Wix); vacío o 0 = no se procesa
+  const lineas: { item_id: string; quantity: number }[] = [];
+  for (const [k, v] of formData.entries()) {
+    if (!k.startsWith("item_")) continue;
+    const itemId = k.slice(5);
+    const q = Number(v);
+    if (!uuid.safeParse(itemId).success) volverConError(back, "Ítem inválido");
+    if (!Number.isFinite(q) || q < 0) volverConError(back, "Cantidad inválida");
+    if (q > 0) lineas.push({ item_id: itemId, quantity: q });
+  }
+  if (lineas.length === 0) volverConError(back, "Indicá qué cantidades estás despachando");
+  const { data, error } = await db().rpc("wix_process_order", {
+    p_order_id: id,
+    p_lines: lineas,
+    p_actor_id: user.id,
+    p_actor: user.alias,
+  });
+  if (error) volverConError(back, error.message);
+  const r = data as { batch_id: string };
+  // avisar a Wix (si falla, el stock ya salió: queda pendiente y lo reintenta el cron)
+  const ful = await sincronizarFulfillments(r.batch_id);
+  after(() => publicarInventario().catch(() => {}));
+  const msg =
+    ful.errores > 0
+      ? "Stock descontado. No se pudo marcar en Wix todavía (se reintenta solo)."
+      : "Pedido procesado: stock descontado y marcado como procesado en Wix.";
+  volverOk(back, msg);
+}
+
+// volver a leer el pedido en Wix y aplicar las reglas
+export async function actualizarPedidoDesdeWix(formData: FormData) {
+  await requireSection("pedidos");
+  const id = String(formData.get("id") ?? "");
+  if (!uuid.safeParse(id).success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id}`;
+  const { data, error } = await db().from("channel_orders").select("external_id").eq("id", id).single();
+  if (error) volverConError(back, error.message);
+  try {
+    const o = await getOrder(data.external_id);
+    const res = await reconciliarPedido(o);
+    volverOk(back, `Actualizado desde Wix (${res})`);
+  } catch (e) {
+    volverConError(back, (e as Error).message);
+  }
+}
+
+// ── Integración (solo ADMIN) ────────────────────────────────────────
+
+export async function cambiarPulsador(formData: FormData) {
+  const user = await requireRole("ADMIN");
+  const encender = formData.get("accion") === "conectar";
+  const motivo = String(formData.get("motivo") ?? "").trim();
+  const modo = String(formData.get("pausados") ?? "procesar"); // procesar | descartar
+  if (!encender && !motivo) volverConError("/wix", "Indicá el motivo de la desconexión (queda en la auditoría)");
+  const { error } = await db().rpc("wix_set_enabled", { p_enabled: encender, p_actor: user.alias, p_reason: motivo || null });
+  if (error) volverConError("/wix", error.message);
+  if (encender) {
+    const n = modo === "descartar" ? await descartarPausados() : await reanudarPausados();
+    if (modo !== "descartar" && n > 0) after(() => procesarPendientes().catch(() => {}));
+    volverOk("/wix", n > 0 ? `Conectado. ${n} evento(s) acumulados ${modo === "descartar" ? "descartados" : "en proceso"}.` : "Conectado a Wix.");
+  }
+  volverOk("/wix", "Desconectado de Wix. Las ventas se cargan a mano hasta volver a conectar.");
+}
+
+export async function cambiarOpcionesWix(formData: FormData) {
+  const user = await requireRole("ADMIN");
+  await patchWixSettings(
+    { sync_inventory: formData.get("sync_inventory") === "si", enable_tracking: formData.get("enable_tracking") === "si" },
+    user.alias
+  );
+  volverOk("/wix", "Opciones guardadas");
+}
+
+export async function sincronizarAhora() {
+  await requireRole("ADMIN");
+  try {
+    const r = await corridaSync();
+    volverOk("/wix", `Sincronización: ${JSON.stringify(r)}`);
+  } catch (e) {
+    volverConError("/wix", (e as Error).message);
+  }
+}
+
+export async function publicarTodoElStock() {
+  await requireRole("ADMIN");
+  try {
+    const r = await publicarInventario(true);
+    volverOk("/wix", `Publicado a Wix: ${r.skus} SKU, ${r.errores} con error, ${r.omitidos} omitidos (sin mapeo o sin seguimiento)`);
+  } catch (e) {
+    volverConError("/wix", (e as Error).message);
+  }
+}
+
+export async function mapearCatalogoWix() {
+  const user = await requireRole("ADMIN");
+  try {
+    const r = await mapearCatalogo(user.alias);
+    const faltan = r.faltanEnWix.length ? ` Sin producto en Wix: ${r.faltanEnWix.slice(0, 15).join(", ")}${r.faltanEnWix.length > 15 ? "…" : ""}.` : "";
+    const sobran = r.sobranEnWix.length ? ` SKU de Wix sin equivalencia: ${r.sobranEnWix.slice(0, 15).join(", ")}${r.sobranEnWix.length > 15 ? "…" : ""}.` : "";
+    volverOk("/wix", `Catálogo ${r.version}: ${r.mapeados} SKU mapeados, ${r.sinSeguimiento} sin seguimiento de inventario en Wix.${faltan}${sobran}`);
+  } catch (e) {
+    volverConError("/wix", (e as Error).message);
+  }
+}
+
+export async function probarConexionWix() {
+  await requireRole("ADMIN");
+  const r = await probarConexion();
+  if (r.ok) volverOk("/wix", r.detalle);
+  volverConError("/wix", r.detalle);
+}
+
+export async function reintentarEvento(formData: FormData) {
+  await requireRole("ADMIN");
+  const id = String(formData.get("id") ?? "");
+  if (!uuid.safeParse(id).success) volverConError("/wix", "Evento inválido");
+  await db().from("integration_events").update({ status: "PENDING" }).eq("id", id);
+  const r = await procesarEvento(id);
+  if (r.startsWith("error:")) volverConError("/wix", r.slice(6));
+  volverOk("/wix", `Evento procesado (${r})`);
+}

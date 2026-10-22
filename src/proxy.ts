@@ -32,7 +32,8 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isLogin = path === "/login";
   // backup diario: lo llama el cron de Vercel (sin sesión); se protege en la ruta
-  if (path === "/api/backup") return response;
+  // webhooks y cron de Wix: sin sesión, se protegen en la ruta (firma JWT / secreto)
+  if (path === "/api/backup" || path.startsWith("/api/wix/")) return response;
 
   if (!user && !isLogin) {
     return NextResponse.redirect(new URL("/login", request.url));

@@ -25,6 +25,12 @@ const TABLAS = [
   "cash_closing_expenses",
   "channel_skus",
   "channel_sku_lines",
+  "app_settings",
+  "integration_events",
+  "channel_orders",
+  "channel_order_items",
+  "reservations",
+  "channel_order_fulfillments",
 ] as const;
 
 export const BUCKET = "backups";
