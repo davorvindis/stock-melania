@@ -4,6 +4,7 @@ import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/
 import { contarPendientesVacaciones } from "@/lib/personal";
 import { getPendientes } from "@/lib/preventa";
 import { cierresSinVer } from "@/lib/caja";
+import { contarPendientesCF } from "@/lib/caja-fuerte";
 import { getBalances, getMovements, getCounts, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -38,7 +39,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const vePreventa = can(user, "preventa");
   // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
   const veCierres = user.role === "ADMIN" && can(user, "caja");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -46,6 +47,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     apruebaVacaciones ? contarPendientesVacaciones() : Promise.resolve(0),
     vePreventa ? getPendientes() : Promise.resolve([]),
     veCierres ? cierresSinVer(user.id) : Promise.resolve([]),
+    veCierres ? contarPendientesCF() : Promise.resolve(0),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -112,6 +114,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return (
     <div>
       <PageTitle>Dashboard</PageTitle>
+
+      {cfPendientes > 0 && (
+        <Card className="mb-4 border-amber-300 bg-amber-50">
+          <p className="text-sm">
+            🔐 <b>Caja fuerte: {cfPendientes} movimiento(s) para aprobar.</b>{" "}
+            <Link href="/caja/fuerte" className="font-semibold text-rose-deep hover:underline">
+              Revisar →
+            </Link>
+          </p>
+        </Card>
+      )}
 
       {cierresNuevos.length > 0 && (
         <Card className="mb-4 border-rose-deep/40 bg-blush-100">

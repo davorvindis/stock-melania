@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { cierresSinVer, getCierres, totalesDe } from "@/lib/caja";
+import { getCajaFuerte } from "@/lib/caja-fuerte";
 import { CONTADORES, dolares, faltaCuenta, pesos } from "@/lib/caja-calc";
 import { hoyAR } from "@/lib/backup";
 import { Card, Flash, PageTitle, th, td } from "@/components/ui";
@@ -30,10 +31,11 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
       hasta = `${sp.mes}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
     }
   }
-  const [cierres, todos, sinVer] = await Promise.all([
+  const [cierres, todos, sinVer, cf] = await Promise.all([
     getCierres(desde, hasta),
     getCierres(),
     user.role === "ADMIN" ? cierresSinVer(user.id) : Promise.resolve([]),
+    getCajaFuerte(),
   ]);
   const vistos = new Set(sinVer.map((c) => c.id));
   const filas = cierres.map((c) => ({ c, t: totalesDe(c) }));
@@ -86,6 +88,24 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           ))}
         </div>
       )}
+
+      <Link
+        href="/caja/fuerte"
+        className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 hover:border-blush ${
+          cf.pendientesAprobar.length ? "border-amber-300 bg-amber-50" : "border-blush-100 bg-white"
+        }`}
+      >
+        <span>
+          🔐 <b>Caja fuerte</b> · pendiente de retirar <b>{pesos(cf.porRetirar.ARS)}</b>
+          {cf.porRetirar.USD ? <> · <b>{dolares(cf.porRetirar.USD)}</b></> : null}
+          {cf.pendientesAprobar.length > 0 && (
+            <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900">
+              {cf.pendientesAprobar.length} para aprobar
+            </span>
+          )}
+        </span>
+        <span className="text-sm font-medium text-rose-deep">Retiros e historial →</span>
+      </Link>
 
       <form method="get" className="mb-2">
         <RangoFechas desde={desde} hasta={hasta} />
