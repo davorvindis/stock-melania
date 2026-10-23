@@ -16,6 +16,7 @@ Pendiente: se define en Paso 2 (proyecto Supabase + migrations iniciales).
 - `adjustment_approvals`
 - `documents` (Storage privado, signed URLs)
 - `audit_logs` — append-only
+- `cash_closings` + `cash_closing_lines` + `cash_closing_expenses` + `cash_closing_views` — cierre de caja diario (pestaña "Cierre de caja", sección `caja`); se guarda con `save_cash_closing` y al enviarse se respalda el Excel del mes en `backups/caja/INFORMES-AAAA-MM.xlsx`
 - `channel_skus` + `channel_sku_lines` — equivalencias SKU de Wix → productos y cantidades (ver `docs/WIX_V2.md`)
 - `reservations`, `integration_events` — **todavía no creadas**: se crean al programar la integración con Wix
 

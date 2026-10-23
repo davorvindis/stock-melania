@@ -3,6 +3,7 @@ import { requireUser, can } from "@/lib/auth";
 import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/ventas";
 import { contarPendientesVacaciones } from "@/lib/personal";
 import { getPendientes } from "@/lib/preventa";
+import { cierresSinVer } from "@/lib/caja";
 import { getBalances, getMovements, getCounts, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -35,13 +36,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const desdeVentas = hace14 < mes.desde ? hace14 : mes.desde;
   const apruebaVacaciones = user.role === "ADMIN" && can(user, "vacaciones");
   const vePreventa = can(user, "preventa");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend] = await Promise.all([
+  // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
+  const veCierres = user.role === "ADMIN" && can(user, "caja");
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
     getVentas({ desde: desdeVentas, hasta: mes.hasta, persona: verTodas ? undefined : user.alias }),
     apruebaVacaciones ? contarPendientesVacaciones() : Promise.resolve(0),
     vePreventa ? getPendientes() : Promise.resolve([]),
+    veCierres ? cierresSinVer(user.id) : Promise.resolve([]),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -108,6 +112,22 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return (
     <div>
       <PageTitle>Dashboard</PageTitle>
+
+      {cierresNuevos.length > 0 && (
+        <Card className="mb-4 border-rose-deep/40 bg-blush-100">
+          <p className="text-sm">
+            📋 <b>{cierresNuevos[0].submitted_by ?? "Yura"} envió el cierre de caja</b>{" "}
+            {cierresNuevos.map((c, i) => (
+              <span key={c.id}>
+                {i > 0 && " · "}
+                <Link href={`/caja/${c.closing_date}`} className="font-semibold text-rose-deep hover:underline">
+                  Ver cierre del {c.closing_date.split("-").reverse().join("/")}
+                </Link>
+              </span>
+            ))}
+          </p>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Unidades físicas" value={fmtQty(fisico)} />

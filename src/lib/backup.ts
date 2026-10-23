@@ -20,6 +20,11 @@ const TABLAS = [
   "inventory_counts",
   "inventory_count_lines",
   "audit_logs",
+  "cash_closings",
+  "cash_closing_lines",
+  "cash_closing_expenses",
+  "channel_skus",
+  "channel_sku_lines",
 ] as const;
 
 export const BUCKET = "backups";

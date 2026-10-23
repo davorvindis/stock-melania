@@ -11,6 +11,7 @@ const items = [
   { href: "/movimientos/nuevo", label: "Nuevo movimiento", section: "movimientos" },
   { href: "/movimientos", label: "Movimientos", section: "movimientos" },
   { href: "/ventas", label: "Ventas", section: "ventas" },
+  { href: "/caja", label: "Cierre de caja", section: "caja" },
   { href: "/preventa", label: "Preventa", section: "preventa" },
   { href: "/conteos", label: "Conteos", section: "conteos" },
   { href: "/productos", label: "Productos", section: "productos" },
