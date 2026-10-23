@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { guardarCierre } from "@/lib/caja-actions";
-import { CONTADORES, CUENTAS, dolares, pesos, totalesCierre, type GastoCaja, type LineaCaja } from "@/lib/caja-calc";
+import { CONTADORES, CUENTAS, dolares, faltaCuenta, pesos, totalesCierre, type GastoCaja, type LineaCaja } from "@/lib/caja-calc";
 
 type Linea = { key: number } & Record<"order_ref" | "customer" | "description" | "cash" | "money_in" | "posnet" | "mp_link" | "transfer" | "account" | "usd" | "invoice", string> & { kind: "MINORISTA" | "MAYORISTA" };
 type Gasto = { key: number; amount: string; currency: "ARS" | "USD"; description: string; from_petty_cash: boolean };
@@ -97,7 +97,15 @@ export function CierreEditor({
 
   const setLinea = (key: number, c: Partial<Linea>) => {
     setCambios(true);
-    setLineas((x) => x.map((l) => (l.key === key ? { ...l, ...c } : l)));
+    setLineas((x) =>
+      x.map((l) => {
+        if (l.key !== key) return l;
+        const nueva = { ...l, ...c };
+        // los links de pago de Mercado Pago son de la cuenta de Marrudi
+        if (c.mp_link?.trim() && !l.account.trim()) nueva.account = "Marrudi";
+        return nueva;
+      })
+    );
   };
   const setGasto = (key: number, c: Partial<Gasto>) => {
     setCambios(true);
@@ -144,7 +152,7 @@ export function CierreEditor({
                       <input type="number" step="any" inputMode="decimal" value={l[m.k]} onChange={(e) => setLinea(l.key, { [m.k]: e.target.value })} className={`${campo} text-right`} />
                     </td>
                   ))}
-                  <td className="p-1"><input list="cuentas-caja" value={l.account} onChange={(e) => setLinea(l.key, { account: e.target.value })} className={campo} /></td>
+                  <td className="p-1"><input list="cuentas-caja" value={l.account} placeholder="¿a dónde?" onChange={(e) => setLinea(l.key, { account: e.target.value })} className={campo + (faltaCuenta({ kind: l.kind, cash: num(l.cash), posnet: num(l.posnet), mp_link: num(l.mp_link), transfer: num(l.transfer), account: l.account }) ? " border-red-400 bg-red-50" : "")} /></td>
                   <td className="p-1"><input type="number" step="any" inputMode="decimal" value={l.usd} onChange={(e) => setLinea(l.key, { usd: e.target.value })} className={`${campo} text-right`} /></td>
                   <td className="p-1"><input value={l.invoice} onChange={(e) => setLinea(l.key, { invoice: e.target.value })} className={campo} /></td>
                   <td className="p-1">
@@ -183,7 +191,7 @@ export function CierreEditor({
                     <input type="number" step="any" inputMode="decimal" value={l[m.k]} onChange={(e) => setLinea(l.key, { [m.k]: e.target.value })} className={`${campo} text-right`} />
                   </label>
                 ))}
-                <label className="text-xs text-soft">Extras (cuenta)<input list="cuentas-caja" value={l.account} onChange={(e) => setLinea(l.key, { account: e.target.value })} className={campo} /></label>
+                <label className="text-xs text-soft">Extras (cuenta)<input list="cuentas-caja" value={l.account} placeholder="¿a dónde?" onChange={(e) => setLinea(l.key, { account: e.target.value })} className={campo + (faltaCuenta({ kind: l.kind, cash: num(l.cash), posnet: num(l.posnet), mp_link: num(l.mp_link), transfer: num(l.transfer), account: l.account }) ? " border-red-400 bg-red-50" : "")} /></label>
                 <label className="text-xs text-soft">Pago USD<input type="number" step="any" inputMode="decimal" value={l.usd} onChange={(e) => setLinea(l.key, { usd: e.target.value })} className={`${campo} text-right`} /></label>
                 <label className="text-xs text-soft">Factura<input value={l.invoice} onChange={(e) => setLinea(l.key, { invoice: e.target.value })} className={campo} /></label>
               </div>
@@ -319,6 +327,11 @@ export function CierreEditor({
           name="accion"
           value="enviar"
           onClick={(e) => {
+            if (t.sinCuenta) {
+              e.preventDefault();
+              alert(`Hay ${t.sinCuenta} pago(s) sin indicar en "Extras (cuenta)" a dónde entró la plata (marcados en rojo). Si es efectivo, poné Caja fuerte o Caja chica.`);
+              return;
+            }
             if (!confirm(`¿Enviar el cierre? Total ingresos ${pesos(t.ventas)} · gastos ${pesos(t.gastos)}. Joel y Mel van a ver el aviso.`)) e.preventDefault();
           }}
           className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper"

@@ -41,14 +41,17 @@ export const CONTADORES: { key: string; label: string }[] = [
   { key: "pedidos_web_minoristas", label: "Pedidos web 19-5 minoristas" },
 ];
 
-// cuentas donde entra la plata (columna EXTRAS); se puede escribir otra
-export const CUENTAS = ["Marrudi", "Joel", "Melania"];
+// cuentas donde entra la plata (columna EXTRAS); se puede escribir otra.
+// Caja fuerte / Caja chica: para el efectivo que queda en el local
+export const CUENTAS = ["Marrudi", "Joel", "Melania", "Caja fuerte", "Caja chica"];
 
 const n = (v: unknown) => {
   const x = typeof v === "string" ? parseFloat(v) : Number(v);
   return Number.isFinite(x) ? x : 0;
 };
 export const ventaDe = (l: LineaCaja) => n(l.cash) + n(l.posnet) + n(l.mp_link) + n(l.transfer);
+// todo pago con monto tiene que decir a dónde entró (los ingresos de dinero van a la caja chica)
+export const faltaCuenta = (l: LineaCaja) => ventaDe(l) !== 0 && !(l.account ?? "").trim();
 
 export function totalesCierre(lines: LineaCaja[], expenses: GastoCaja[], opening = 0, surplus = 0) {
   const suma = (f: (l: LineaCaja) => number, filtro: (l: LineaCaja) => boolean = () => true) =>
@@ -81,6 +84,7 @@ export function totalesCierre(lines: LineaCaja[], expenses: GastoCaja[], opening
     neto: ventas - gastos,
     cajaChica: n(opening) + ingresosDinero - gastosCaja + n(surplus),
     pagos: lines.filter((l) => ventaDe(l) || n(l.money_in) || n(l.usd)).length,
+    sinCuenta: lines.filter(faltaCuenta).length,
   };
 }
 

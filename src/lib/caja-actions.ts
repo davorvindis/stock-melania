@@ -61,6 +61,16 @@ export async function guardarCierre(formData: FormData) {
   lines.forEach((l, i) => {
     if ([l.cash, l.money_in, l.posnet, l.mp_link, l.transfer, l.usd].some((v) => Number.isNaN(v))) fallar(`Pago ${i + 1}: hay un monto que no es un número`);
   });
+  if (enviar) {
+    const venta = (l: (typeof lines)[number]) => (l.cash ?? 0) + (l.posnet ?? 0) + (l.mp_link ?? 0) + (l.transfer ?? 0);
+    const sinCuenta = lines.filter((l) => venta(l) !== 0 && !(l.account ?? "").trim());
+    if (sinCuenta.length)
+      fallar(
+        `Falta indicar en "Extras (cuenta)" a dónde entró la plata: ${sinCuenta
+          .map((l) => l.customer || l.order_ref || "pago sin cliente")
+          .join(", ")}. Si es efectivo, poné Caja fuerte o Caja chica. Podés guardar borrador y completarlo después.`
+      );
+  }
   const expenses = d.expenses.filter((g) => g.amount != null || (g.description ?? "").trim());
   expenses.forEach((g, i) => {
     if (g.amount == null || Number.isNaN(g.amount) || g.amount < 0) fallar(`Gasto ${i + 1}: falta el monto o no es válido`);

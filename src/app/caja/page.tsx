@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { cierresSinVer, getCierres, totalesDe } from "@/lib/caja";
-import { CONTADORES, dolares, pesos } from "@/lib/caja-calc";
+import { CONTADORES, dolares, faltaCuenta, pesos } from "@/lib/caja-calc";
 import { hoyAR } from "@/lib/backup";
 import { Card, Flash, PageTitle, th, td } from "@/components/ui";
 import { RangoFechas } from "@/components/rango-fechas";
@@ -44,6 +44,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
     posnet: sum((t) => t.posnet), usd: sum((t) => t.usd), gastos: sum((t) => t.gastos), gastosUsd: sum((t) => t.gastosUsd),
     neto: sum((t) => t.neto), ingresosDinero: sum((t) => t.ingresosDinero),
   };
+  const sinCuenta = cierres.flatMap((c) => c.lines.filter(faltaCuenta).map((l) => ({ c, l })));
   const cuentas = new Map<string, number>();
   for (const { t } of filas) for (const [k, v] of t.porCuenta) cuentas.set(k, (cuentas.get(k) ?? 0) + v);
   const contadores = CONTADORES.map((k) => ({
@@ -133,11 +134,29 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           {cuentas.size === 0 && <p className="text-sm text-soft">Sin pagos en el período.</p>}
           <ul className="space-y-1 text-sm">
             {[...cuentas.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => (
-              <li key={k} className="flex justify-between"><span>{k}</span><b>{pesos(v)}</b></li>
+              <li key={k} className={`flex justify-between ${k === "Sin indicar" ? "text-red-700" : ""}`}><span>{k === "Sin indicar" ? "⚠ Sin indicar" : k}</span><b>{pesos(v)}</b></li>
             ))}
             {total.usd > 0 && <li className="flex justify-between"><span>Pagos en USD</span><b>{dolares(total.usd)}</b></li>}
-            {total.ingresosDinero > 0 && <li className="flex justify-between text-soft"><span>Ingresos de dinero (no venta)</span><span>{pesos(total.ingresosDinero)}</span></li>}
+            {total.ingresosDinero > 0 && (
+              <li className="flex justify-between text-soft">
+                <span>Ingresos de dinero → caja chica (no son venta)</span>
+                <span>{pesos(total.ingresosDinero)}</span>
+              </li>
+            )}
           </ul>
+          {sinCuenta.length > 0 && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+              ⚠ Pagos sin indicar a dónde entraron (completar &quot;Extras&quot;):
+              <ul className="mt-1 space-y-0.5">
+                {sinCuenta.map(({ c, l }, i) => (
+                  <li key={i}>
+                    <Link href={`/caja/${c.closing_date}`} className="font-semibold underline">{dmy(c.closing_date)}</Link>{" "}
+                    {l.customer ?? "—"} · {pesos((Number(l.cash) || 0) + (Number(l.posnet) || 0) + (Number(l.mp_link) || 0) + (Number(l.transfer) || 0))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
         <Card>
           <h2 className="mb-2 font-semibold">Gastos del período</h2>
