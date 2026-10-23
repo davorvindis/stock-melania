@@ -23,9 +23,11 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims verifica la firma del token acá mismo (claves ES256 publicadas por
+  // Supabase) en vez de consultar al servidor de Auth en cada request, que a veces
+  // tarda varios segundos. Si el token venció, lo refresca y actualiza las cookies.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ?? null;
 
   const path = request.nextUrl.pathname;
   const isLogin = path === "/login";

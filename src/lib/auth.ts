@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { randomInt } from "crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -98,16 +99,18 @@ export async function supabaseAuth() {
   );
 }
 
-export async function getSessionUser(): Promise<Profile | null> {
+// una sola vez por request (layout, página y helpers comparten el resultado).
+// La identidad sale del token verificado localmente (getClaims); que el usuario
+// siga activo se controla con su perfil.
+export const getSessionUser = cache(async (): Promise<Profile | null> => {
   const sb = await supabaseAuth();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return null;
-  const { data } = await db().from("profiles").select("*").eq("id", user.id).single();
+  const { data: auth } = await sb.auth.getClaims();
+  const id = auth?.claims?.sub;
+  if (!id) return null;
+  const { data } = await db().from("profiles").select("*").eq("id", id).single();
   if (!data || !data.active) return null;
   return data as Profile;
-}
+});
 
 export async function requireUser(): Promise<Profile> {
   const p = await getSessionUser();
