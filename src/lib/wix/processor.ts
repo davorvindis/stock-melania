@@ -26,6 +26,7 @@ export type WixSettings = {
   paused_at: string | null;
   paused_by: string | null;
   activated_at: string | null;
+  ignore_before?: string | null; // se corre al descartar la cola al reconectar
   sync_inventory: boolean;
   enable_tracking?: boolean; // activar seguimiento en Wix a productos que no lo tienen
   location_deposito: string | null;
@@ -50,6 +51,8 @@ const ACTOR = "wix";
 // ── Reconciliar un pedido ───────────────────────────────────────────
 
 export async function reconciliarPedido(o: WixOrder): Promise<string> {
+  const settings = await getWixSettings();
+  if (!settings.enabled) throw new Error("La integración con Wix está desconectada: no se aplican cambios");
   const n: PedidoNormalizado = normalizarPedido(o);
   const cli = db();
   const up = await cli.rpc("wix_upsert_order", { p_order: n });
@@ -57,7 +60,6 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   const orderId = up.data as string;
   const row = await cli.from("channel_orders").select("state, wix_fulfilled").eq("id", orderId).single();
   if (row.error) throw new Error(row.error.message);
-  const state = row.data.state as string;
 
   const cancelado =
     n.wix_status === "CANCELED" || ["FULLY_REFUNDED", "CANCELED", "DECLINED"].includes(n.payment_status ?? "");
@@ -65,6 +67,7 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
 
   if (n.channel_type === "POS") {
     if (cancelado) return rpcTexto("wix_release_order", { p_order_id: orderId, p_reason: motivo(n), p_actor: ACTOR });
+    // primera vez descuenta todo; en corridas siguientes solo reintenta ítems con error / sin equivalencia
     if (n.wix_status === "APPROVED" || pagado) return rpcTexto("wix_pos_sale", { p_order_id: orderId, p_actor: ACTOR });
     return "pos:esperando";
   }
@@ -72,14 +75,15 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   if (cancelado) return rpcTexto("wix_release_order", { p_order_id: orderId, p_reason: motivo(n), p_actor: ACTOR });
   if (!pagado) return `esperando-pago:${n.payment_status}`;
 
-  let res = "noop";
-  if (state === "NEW") res = await rpcTexto("wix_reserve_order", { p_order_id: orderId, p_actor: ACTOR });
+  // reservar es idempotente: agrega solo lo nuevo (ej. equivalencia cargada después)
+  let res = await rpcTexto("wix_reserve_order", { p_order_id: orderId, p_actor: ACTOR });
   if (n.payment_status === "PARTIALLY_REFUNDED") {
     await cli.rpc("_wix_append_review", { p_order: orderId, p_text: "Reembolso parcial en Wix: revisar qué se devuelve" });
   }
   if (n.fulfillment_status === "FULFILLED" && !row.data.wix_fulfilled) {
-    const st = state === "NEW" ? res : state;
-    if (st === "reserved" || st === "RESERVED" || st === "PARTIAL") {
+    const after = await cli.from("channel_orders").select("state").eq("id", orderId).single();
+    const st = after.data?.state;
+    if (st === "RESERVED" || st === "PARTIAL") {
       await cli.rpc("wix_mark_fulfilled_externally", { p_order_id: orderId, p_actor: ACTOR });
       res += "+fulfilled-externally";
     } else {
@@ -179,6 +183,9 @@ export async function reanudarPausados(): Promise<number> {
 }
 
 export async function descartarPausados(): Promise<number> {
+  // lo que pasó mientras estaba desconectado ya se cargó a mano: no volver a leerlo
+  const ahora = new Date().toISOString();
+  await patchWixSettings({ ignore_before: ahora, last_poll_at: ahora }, ACTOR);
   const { data, error } = await db()
     .from("integration_events")
     .update({ status: "SKIPPED", processed_at: new Date().toISOString(), result: "descartado al reconectar" })
@@ -197,31 +204,42 @@ export async function sondearPedidos(): Promise<{ revisados: number; nuevos: num
   const desde = new Date(new Date(base).getTime() - 60 * 60_000).toISOString(); // 1 h de margen
   const pedidos = await searchOrdersDesde(desde);
   let nuevos = 0;
-  let maxUpd = base;
+  let maxUpd = new Date(base).getTime();
   for (const o of pedidos) {
     const upd = o.updatedDate ?? o.createdDate ?? "";
-    if (upd > maxUpd) maxUpd = upd;
+    const t = Date.parse(upd);
+    if (Number.isFinite(t) && t > maxUpd) maxUpd = t;
     const { id, nuevo } = await registrarEvento(`poll:${o.id}:${upd}`, "poll.order", o.id, { number: o.number, updatedDate: upd }, "poll");
     if (!nuevo) continue;
     nuevos++;
     await procesarEvento(id);
   }
-  await patchWixSettings({ last_poll_at: maxUpd > base ? maxUpd : new Date().toISOString() }, ACTOR);
+  await patchWixSettings({ last_poll_at: new Date(Math.max(maxUpd, Date.now() - 60 * 60_000)).toISOString() }, ACTOR);
   return { revisados: pedidos.length, nuevos };
 }
 
 // ── Fulfillment en Wix (después de procesar en Melania) ─────────────
 
 export async function sincronizarFulfillments(batchId?: string): Promise<{ ok: number; errores: number }> {
+  const s = await getWixSettings();
+  if (!s.enabled) return { ok: 0, errores: 0 };
   const cli = db();
   let q = cli
     .from("channel_order_fulfillments")
-    .select("id, order_id, quantity, item:channel_order_items(external_line_id), order:channel_orders(external_id, number)")
-    .eq("wix_synced", false);
+    .select("id, order_id, quantity, wix_attempts, item:channel_order_items(external_line_id), order:channel_orders(external_id, number, wix_fulfilled, fulfillment_status)")
+    .eq("wix_synced", false)
+    .lt("wix_attempts", 5);
   if (batchId) q = q.eq("batch_id", batchId);
-  const { data, error } = await q.order("created_at", { ascending: true }).limit(100);
+  const { data, error } = await q.order("wix_attempts", { ascending: true }).order("created_at", { ascending: true }).limit(100);
   if (error) throw new Error(error.message);
-  type Row = { id: string; order_id: string; quantity: number; item: { external_line_id: string } | null; order: { external_id: string; number: string | null } | null };
+  type Row = {
+    id: string;
+    order_id: string;
+    quantity: number;
+    wix_attempts: number;
+    item: { external_line_id: string } | null;
+    order: { external_id: string; number: string | null; wix_fulfilled: boolean; fulfillment_status: string | null } | null;
+  };
   const filas = (data ?? []) as unknown as Row[];
   // una llamada por pedido con todas sus líneas pendientes
   const porPedido = new Map<string, Row[]>();
@@ -235,6 +253,12 @@ export async function sincronizarFulfillments(batchId?: string): Promise<{ ok: n
   for (const [, grupo] of porPedido) {
     const ext = grupo[0].order?.external_id;
     if (!ext) continue;
+    // ya lo marcaron procesado en Wix (a mano): no hay nada que crear
+    if (grupo[0].order?.wix_fulfilled || grupo[0].order?.fulfillment_status === "FULFILLED") {
+      await cli.from("channel_order_fulfillments").update({ wix_synced: true, wix_error: "ya estaba procesado en Wix" }).in("id", grupo.map((f) => f.id));
+      ok += grupo.length;
+      continue;
+    }
     const lineas = new Map<string, number>();
     for (const f of grupo) {
       const lid = f.item?.external_line_id;
@@ -248,7 +272,7 @@ export async function sincronizarFulfillments(batchId?: string): Promise<{ ok: n
       ok += grupo.length;
     } catch (e) {
       const msg = (e as Error).message;
-      await cli.from("channel_order_fulfillments").update({ wix_error: msg }).in("id", grupo.map((f) => f.id));
+      for (const f of grupo) await cli.from("channel_order_fulfillments").update({ wix_error: msg, wix_attempts: f.wix_attempts + 1 }).eq("id", f.id);
       errores += grupo.length;
     }
   }
@@ -283,14 +307,16 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
   const s = await getWixSettings();
   if (!s.enabled || !s.sync_inventory || !wixConfigurado() || !s.location_deposito) return { skus: 0, errores: 0, omitidos: 0 };
   const cli = db();
-  // productos en cola (o todos)
+  // productos en cola (o todos). Se recuerda cuándo se leyó: lo encolado después no se borra.
+  const leidoEn = new Date().toISOString();
   let productos: string[] = [];
   if (!todo) {
-    const q = await cli.from("wix_sync_queue").select("product_id").limit(500);
+    const q = await cli.from("wix_sync_queue").select("product_id").lte("queued_at", leidoEn).limit(500);
     if (q.error) throw new Error(q.error.message);
     productos = (q.data ?? []).map((r) => r.product_id);
     if (productos.length === 0) return { skus: 0, errores: 0, omitidos: 0 };
   }
+  const conError = new Set<string>(); // productos cuyo SKU falló: quedan en cola para reintentar
   // equivalencias afectadas
   let eqq = cli
     .from("channel_skus")
@@ -301,7 +327,7 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
     if (ids.error) throw new Error(ids.error.message);
     const set = [...new Set((ids.data ?? []).map((r) => r.channel_sku_id))];
     if (set.length === 0) {
-      await cli.from("wix_sync_queue").delete().in("product_id", productos);
+      await cli.from("wix_sync_queue").delete().in("product_id", productos).lte("queued_at", leidoEn);
       return { skus: 0, errores: 0, omitidos: 0 };
     }
     eqq = eqq.in("id", set);
@@ -327,7 +353,7 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
   if (version === "V3_CATALOG") {
     const items: { inventoryItemId: string; quantity: number; id: string }[] = [];
     for (const e of lista) {
-      if (!e.wix_inventory_item_id || (e.wix_tracked === false && !s.enable_tracking)) { omitidos++; continue; }
+      if (!e.wix_inventory_item_id || (e.wix_tracked !== true && !s.enable_tracking)) { omitidos++; continue; }
       items.push({ inventoryItemId: e.wix_inventory_item_id, quantity: disponibleSku(e, disp), id: e.id });
     }
     for (let i = 0; i < items.length; i += 500) {
@@ -338,6 +364,7 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
         skus += lote.length;
       } catch (err) {
         for (const it of lote) await marcar(it.id, { wix_sync_error: (err as Error).message, wix_last_sync_at: ahora });
+        for (const it of lote) for (const l of lista.find((e) => e.id === it.id)?.lines ?? []) conError.add(l.product_id);
         errores += lote.length;
       }
     }
@@ -345,7 +372,8 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
     // V1: una llamada por producto de Wix con sus variantes
     const porProducto = new Map<string, { eq: Eq; quantity: number }[]>();
     for (const e of lista) {
-      if (!e.wix_product_id || !e.wix_variant_id || (e.wix_tracked === false && !s.enable_tracking)) { omitidos++; continue; }
+      // sin "activar seguimiento", solo se publica a productos que ya lo tienen (V1 manda trackQuantity:true siempre)
+      if (!e.wix_product_id || !e.wix_variant_id || (e.wix_tracked !== true && !s.enable_tracking)) { omitidos++; continue; }
       const l = porProducto.get(e.wix_product_id) ?? [];
       l.push({ eq: e, quantity: disponibleSku(e, disp) });
       porProducto.set(e.wix_product_id, l);
@@ -357,11 +385,13 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
         skus += vars.length;
       } catch (err) {
         for (const v of vars) await marcar(v.eq.id, { wix_sync_error: (err as Error).message, wix_last_sync_at: ahora });
+        for (const v of vars) for (const l of v.eq.lines) conError.add(l.product_id);
         errores += vars.length;
       }
     }
   }
-  if (!todo) await cli.from("wix_sync_queue").delete().in("product_id", productos);
+  const listos = productos.filter((pid) => !conError.has(pid));
+  if (!todo && listos.length) await cli.from("wix_sync_queue").delete().in("product_id", listos).lte("queued_at", leidoEn);
   return { skus, errores, omitidos };
 }
 

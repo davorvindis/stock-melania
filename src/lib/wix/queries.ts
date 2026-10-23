@@ -163,10 +163,14 @@ export async function getEventosWix(limite = 60): Promise<EventoRow[]> {
 }
 
 export async function contarEventos(): Promise<Record<string, number>> {
-  const { data, error } = await db().from("integration_events").select("status");
-  if (error) throw new Error(error.message);
   const c: Record<string, number> = {};
-  for (const r of data ?? []) c[r.status] = (c[r.status] ?? 0) + 1;
+  await Promise.all(
+    ["PENDING", "PAUSED", "ERROR"].map(async (st) => {
+      const { count, error } = await db().from("integration_events").select("id", { count: "exact", head: true }).eq("status", st);
+      if (error) throw new Error(error.message);
+      c[st] = count ?? 0;
+    })
+  );
   return c;
 }
 

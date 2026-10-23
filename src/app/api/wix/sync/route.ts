@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { corridaSync } from "@/lib/wix/processor";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +9,10 @@ export const maxDuration = 60;
 // disponible. La llama un cron externo (pg_cron o Vercel) con WIX_SYNC_SECRET.
 export async function GET(request: Request) {
   const secreto = process.env.WIX_SYNC_SECRET;
-  const auth = request.headers.get("authorization");
-  if (!secreto || auth !== `Bearer ${secreto}`) return new Response("No autorizado", { status: 401 });
+  const auth = request.headers.get("authorization") ?? "";
+  const esperado = `Bearer ${secreto ?? ""}`;
+  const ok = !!secreto && auth.length === esperado.length && timingSafeEqual(Buffer.from(auth), Buffer.from(esperado));
+  if (!ok) return new Response("No autorizado", { status: 401 });
   try {
     const r = await corridaSync();
     return Response.json({ ok: true, ...r });

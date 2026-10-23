@@ -22,7 +22,7 @@ Stock Melania es la **fuente de verdad** del stock. Wix manda los pedidos; Melan
 
 **Publicación a Wix** (opción en `/wix`): por cada SKU de Wix se manda el disponible de **Depósito**. Packs = `floor(disponible / unidades)`; combos = el componente que menos alcanza; variantes (`-MAY`, `-NAV`…) = igual que el principal. Wix descuenta su propio inventario al pagar; Melania lo sobreescribe en cada cambio.
 
-**Pulsador de emergencia** (`/wix`, solo ADMIN): *Desconectar* con motivo → no entra ni sale nada de Wix; los eventos quedan en cola. *Conectar* → elegís procesar la cola (reserva/descuenta lo que falte) o descartarla (si ya lo cargaste a mano). Mientras está desconectado, Karla vuelve a cargar las ventas del local a mano.
+**Pulsador de emergencia** (`/wix`, solo ADMIN): *Desconectar* con motivo → no entra ni sale nada de Wix; los eventos quedan en cola. *Conectar* → elegís procesar la cola (reserva/descuenta lo que falte) o descartarla (si ya lo cargaste a mano: además se ignora todo pedido anterior a ese momento, `ignore_before`, para que el sondeo no lo vuelva a traer). Mientras está desconectado, Karla vuelve a cargar las ventas del local a mano.
 
 ## Pantallas
 
@@ -37,6 +37,7 @@ Stock Melania es la **fuente de verdad** del stock. Wix manda los pedidos; Melan
 - **Reconciliar = releer el pedido en Wix y aplicar la regla** (`reconciliarPedido`): no importa el tipo ni el orden del evento. Polling de respaldo (`searchOrders` por `updatedDate`) en `GET /api/wix/sync` (`Authorization: Bearer WIX_SYNC_SECRET`), que también manda fulfillments pendientes y publica stock. Lo dispara `pg_cron` cada 5 min (`wix_cron_sync`, migración `wix_cron`) o el botón "Sincronizar ahora".
 - Código: `src/lib/wix/client.ts` (API), `processor.ts` (reglas, cola, polling, inventario, mapeo), `queries.ts`, `actions.ts`; rutas `src/app/api/wix/*`; páginas `src/app/pedidos`, `src/app/wix`.
 - SQL (migración `wix_integracion`): `app_settings` (clave `wix`: enabled, activated_at, sync_inventory, enable_tracking, location_deposito/store, last_poll_at, catalog_version), `integration_events`, `channel_orders`, `channel_order_items`, `reservations`, `channel_order_fulfillments`, `wix_sync_queue`, vista `v_stock_disponible`, funciones `reserved_qty`, `sellable_on_hand`, `available_stock`, `wix_upsert_order`, `wix_reserve_order`, `wix_pos_sale`, `wix_process_order`, `wix_release_order`, `wix_mark_fulfilled_externally`, `wix_record_event`, `wix_set_enabled`, `wix_update_settings`. `channel_skus` suma `wix_product_id/variant_id/inventory_item_id/tracked` y datos de la última publicación.
+- Doble envío del formulario de procesado: cada envío lleva un `batch` (uuid); si ya existe, no descuenta de nuevo. Fulfillments a Wix: hasta 5 intentos; si el pedido ya figura procesado en Wix se marca sincronizado sin llamar.
 - Idempotencia de movimientos: `wix:<orderId>:<lineId>:<productId>:<consumido_antes>:<n>` (procesado) y `wix:<orderId>:<lineId>:<productId>:<n>` (POS).
 - Catálogo Wix V1 vs V3: se detecta con `GET /stores/v3/provision/version` al mapear; el inventario se publica con la API que corresponda.
 

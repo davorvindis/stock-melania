@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { after } from "next/server";
 import { verificarWebhook } from "@/lib/wix/client";
 import { procesarEvento, registrarEvento } from "@/lib/wix/processor";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     return new Response((e as Error).message, { status: 401 });
   }
   const entidad = ev.entityId ?? (ev.data.orderId as string | undefined) ?? null;
-  const eventId = ev.id || `${ev.eventType}:${entidad}:${ev.eventTime ?? Date.now()}`;
+  const eventId = ev.id || `${ev.eventType}:${createHash("sha256").update(raw).digest("hex").slice(0, 32)}`;
   try {
     const { id, nuevo } = await registrarEvento(eventId, ev.eventType, entidad, { slug: ev.slug, eventTime: ev.eventTime }, "webhook");
     if (nuevo) after(() => procesarEvento(id).catch(() => {}));

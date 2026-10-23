@@ -10,6 +10,7 @@ import { getOrder } from "./client";
 import {
   corridaSync,
   descartarPausados,
+  getWixSettings,
   mapearCatalogo,
   patchWixSettings,
   probarConexion,
@@ -44,23 +45,29 @@ export async function procesarPedido(formData: FormData) {
     const itemId = k.slice(5);
     const q = Number(v);
     if (!uuid.safeParse(itemId).success) volverConError(back, "Ítem inválido");
-    if (!Number.isFinite(q) || q < 0) volverConError(back, "Cantidad inválida");
+    if (!Number.isInteger(q) || q < 0) volverConError(back, "Las cantidades deben ser enteras");
     if (q > 0) lineas.push({ item_id: itemId, quantity: q });
   }
   if (lineas.length === 0) volverConError(back, "Indicá qué cantidades estás despachando");
+  const batchRaw = String(formData.get("batch") ?? "");
+  const batch = uuid.safeParse(batchRaw).success ? batchRaw : null; // evita doble envío del mismo formulario
   const { data, error } = await db().rpc("wix_process_order", {
     p_order_id: id,
     p_lines: lineas,
     p_actor_id: user.id,
     p_actor: user.alias,
+    p_batch: batch,
   });
   if (error) volverConError(back, error.message);
-  const r = data as { batch_id: string };
-  // avisar a Wix (si falla, el stock ya salió: queda pendiente y lo reintenta el cron)
-  const ful = await sincronizarFulfillments(r.batch_id);
+  const r = data as { batch_id: string; repeated?: boolean };
+  if (r.repeated) volverOk(back, "Ese despacho ya estaba registrado (no se descontó dos veces).");
+  // avisar a Wix (si falla o está desconectado, el stock ya salió: queda pendiente y lo reintenta el cron)
+  const settings = await getWixSettings();
+  const ful = settings.enabled ? await sincronizarFulfillments(r.batch_id) : { ok: 0, errores: 0 };
   after(() => publicarInventario().catch(() => {}));
-  const msg =
-    ful.errores > 0
+  const msg = !settings.enabled
+    ? "Stock descontado. La integración está desconectada: Wix no se marcó (se hará al reconectar)."
+    : ful.errores > 0
       ? "Stock descontado. No se pudo marcar en Wix todavía (se reintenta solo)."
       : "Pedido procesado: stock descontado y marcado como procesado en Wix.";
   volverOk(back, msg);
@@ -74,13 +81,14 @@ export async function actualizarPedidoDesdeWix(formData: FormData) {
   const back = `/pedidos/${id}`;
   const { data, error } = await db().from("channel_orders").select("external_id").eq("id", id).single();
   if (error) volverConError(back, error.message);
+  let res: string;
   try {
     const o = await getOrder(data.external_id);
-    const res = await reconciliarPedido(o);
-    volverOk(back, `Actualizado desde Wix (${res})`);
+    res = await reconciliarPedido(o);
   } catch (e) {
     volverConError(back, (e as Error).message);
   }
+  volverOk(back, `Actualizado desde Wix (${res})`);
 }
 
 // ── Integración (solo ADMIN) ────────────────────────────────────────
@@ -112,33 +120,38 @@ export async function cambiarOpcionesWix(formData: FormData) {
 
 export async function sincronizarAhora() {
   await requireRole("ADMIN");
+  let r: Record<string, unknown>;
   try {
-    const r = await corridaSync();
-    volverOk("/wix", `Sincronización: ${JSON.stringify(r)}`);
+    r = await corridaSync();
   } catch (e) {
     volverConError("/wix", (e as Error).message);
   }
+  volverOk("/wix", `Sincronización: ${JSON.stringify(r)}`);
 }
 
 export async function publicarTodoElStock() {
   await requireRole("ADMIN");
+  let r: Awaited<ReturnType<typeof publicarInventario>>;
   try {
-    const r = await publicarInventario(true);
-    volverOk("/wix", `Publicado a Wix: ${r.skus} SKU, ${r.errores} con error, ${r.omitidos} omitidos (sin mapeo o sin seguimiento)`);
+    r = await publicarInventario(true);
   } catch (e) {
     volverConError("/wix", (e as Error).message);
   }
+  volverOk("/wix", `Publicado a Wix: ${r.skus} SKU, ${r.errores} con error, ${r.omitidos} omitidos (sin mapeo o sin seguimiento)`);
 }
 
 export async function mapearCatalogoWix() {
   const user = await requireRole("ADMIN");
+  let r: Awaited<ReturnType<typeof mapearCatalogo>>;
   try {
-    const r = await mapearCatalogo(user.alias);
+    r = await mapearCatalogo(user.alias);
+  } catch (e) {
+    volverConError("/wix", (e as Error).message);
+  }
+  {
     const faltan = r.faltanEnWix.length ? ` Sin producto en Wix: ${r.faltanEnWix.slice(0, 15).join(", ")}${r.faltanEnWix.length > 15 ? "…" : ""}.` : "";
     const sobran = r.sobranEnWix.length ? ` SKU de Wix sin equivalencia: ${r.sobranEnWix.slice(0, 15).join(", ")}${r.sobranEnWix.length > 15 ? "…" : ""}.` : "";
     volverOk("/wix", `Catálogo ${r.version}: ${r.mapeados} SKU mapeados, ${r.sinSeguimiento} sin seguimiento de inventario en Wix.${faltan}${sobran}`);
-  } catch (e) {
-    volverConError("/wix", (e as Error).message);
   }
 }
 

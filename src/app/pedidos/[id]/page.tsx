@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
 import { getDisponibles, getPedidoWix, pendientesItem } from "@/lib/wix/queries";
 import { getWixSettings } from "@/lib/wix/processor";
@@ -15,6 +16,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   await requireSection("pedidos");
   const { id } = await params;
   const sp = await searchParams;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const r = await getPedidoWix(id);
   if (!r) notFound();
   const { pedido: p, items, fulfillments } = r;
@@ -85,6 +87,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
 
       <form action={procesarPedido}>
         <input type="hidden" name="id" value={p.id} />
+        <input type="hidden" name="batch" value={randomUUID()} />
         <Card className="mt-3">
           <h2 className="mb-2 font-semibold">Productos</h2>
           <div className="overflow-x-auto">

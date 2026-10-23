@@ -16,6 +16,7 @@ insert into app_settings (key, value) values ('wix', jsonb_build_object(
   'enabled', false,
   'paused_reason', null, 'paused_at', null, 'paused_by', null,
   'activated_at', null,            -- pedidos anteriores a esta fecha se ignoran
+  'ignore_before', null,           -- idem, se corre al "descartar cola" al reconectar
   'sync_inventory', false,         -- publicar disponible a Wix
   'location_deposito', (select id from locations where name = 'Depósito'),
   'location_store', (select id from locations where name = 'Store'),
@@ -154,7 +155,8 @@ create table channel_order_fulfillments (
   actor text not null,
   created_at timestamptz not null default now(),
   wix_synced boolean not null default false,   -- fulfillment creado en Wix
-  wix_error text
+  wix_error text,
+  wix_attempts int not null default 0
 );
 create index idx_cof_batch on channel_order_fulfillments (batch_id);
 create index idx_cof_pending on channel_order_fulfillments (wix_synced) where not wix_synced;
@@ -180,7 +182,8 @@ create trigger trg_reservations_touch before update on reservations
 
 create function _enqueue_wix_sync() returns trigger language plpgsql as $$
 begin
-  insert into wix_sync_queue (product_id) values (new.product_id) on conflict do nothing;
+  insert into wix_sync_queue (product_id) values (new.product_id)
+  on conflict (product_id) do update set queued_at = now();
   return new;
 end $$;
 create trigger trg_balances_wix_sync after insert or update on stock_balances
@@ -287,6 +290,7 @@ begin
   if p_from is not null
      and p_type not in ('COUNT_ADJUSTMENT','REVERSAL','LOT_ASSIGNMENT','QUARANTINE_IN','BREAKAGE','EXPIRED')
      and (p_lot is null or (v_lot_status = 'ACTIVE' and not v_sealed)) then
+    perform pg_advisory_xact_lock(hashtext(p_product::text || ':' || p_from::text));
     v_reserved := reserved_qty(p_product, p_from);
     if v_reserved > 0 then
       v_sellable := sellable_on_hand(p_product, p_from);
@@ -375,7 +379,13 @@ begin
 end $$;
 
 -- ───────────── reservar (pedido web pagado) ─────────────
--- Idempotente: cada ítem × producto reserva una sola vez. Devuelve un código.
+-- Idempotente: cada ítem × producto reserva una sola vez. Se puede volver a
+-- correr (ej. tras cargar una equivalencia que faltaba): solo agrega lo nuevo.
+-- Pedidos anteriores a la activación o a un "descartar cola" se ignoran.
+create function _wix_ignore_before() returns timestamptz language sql stable as $$
+  select greatest((wix_settings()->>'activated_at')::timestamptz, (wix_settings()->>'ignore_before')::timestamptz)
+$$;
+
 create function wix_reserve_order(p_order_id uuid, p_actor text) returns text
 language plpgsql as $$
 declare
@@ -383,22 +393,24 @@ declare
   it record;
   r record;
   v_loc uuid := (wix_settings()->>'location_deposito')::uuid;
-  v_act timestamptz := (wix_settings()->>'activated_at')::timestamptz;
+  v_ign timestamptz := _wix_ignore_before();
   v_any boolean := false;
+  v_new int := 0;
+  v_cnt int;
   v_missing text[] := '{}';
   v_short text[] := '{}';
 begin
   select * into o from channel_orders where id = p_order_id for update;
   if not found then raise exception 'Pedido inexistente'; end if;
-  if o.state in ('PROCESSED','PARTIAL','RELEASED','CANCELED') then return 'noop:' || o.state; end if;
+  if o.state in ('RELEASED','CANCELED') then return 'noop:' || o.state; end if;
   if o.state = 'IGNORED' then return 'ignored'; end if;
-  if v_act is not null and o.ordered_at is not null and o.ordered_at < v_act then
+  if o.state = 'NEW' and v_ign is not null and o.ordered_at is not null and o.ordered_at < v_ign then
     update channel_orders set state = 'IGNORED', review_reason = null where id = p_order_id;
     return 'ignored';
   end if;
   if v_loc is null then raise exception 'Falta configurar la ubicación Depósito para Wix'; end if;
 
-  for it in select * from channel_order_items where order_id = p_order_id loop
+  for it in select * from channel_order_items where order_id = p_order_id order by external_line_id loop
     if it.external_sku is null then
       update channel_order_items set resolved = false, note = 'Sin SKU' where id = it.id;
       v_missing := v_missing || coalesce(it.name, '?');
@@ -411,10 +423,13 @@ begin
     end if;
     update channel_order_items set resolved = true, note = null where id = it.id;
     for r in select * from resolve_channel_sku('WIX', it.external_sku) loop
+      perform pg_advisory_xact_lock(hashtext(r.product_id::text || ':' || v_loc::text));
       insert into reservations (order_id, item_id, product_id, location_id, per_unit, quantity, sale_type)
       values (p_order_id, it.id, r.product_id, v_loc, r.quantity, r.quantity * it.quantity,
               _wix_sale_type(it.external_sku))
       on conflict (item_id, product_id) do nothing;
+      get diagnostics v_cnt = row_count;
+      v_new := v_new + v_cnt;
       v_any := true;
       if available_stock(r.product_id, v_loc) < 0 then
         v_short := v_short || r.name;
@@ -423,10 +438,12 @@ begin
   end loop;
 
   update channel_orders
-     set state = case when v_any then 'RESERVED'::channel_order_state else state end,
-         location_id = v_loc,
+     set state = case when state = 'NEW' and v_any then 'RESERVED'::channel_order_state
+                      when state = 'PROCESSED' and v_new > 0 then 'PARTIAL'::channel_order_state
+                      else state end,
+         location_id = coalesce(location_id, v_loc),
          paid_at = coalesce(paid_at, now()),
-         review_reason = null
+         review_reason = case when review_reason like 'Marcado procesado en Wix%' then review_reason else null end
    where id = p_order_id;
   if array_length(v_missing, 1) > 0 then
     perform _wix_append_review(p_order_id, 'Sin equivalencia: ' || array_to_string(v_missing, ', '));
@@ -434,16 +451,20 @@ begin
   if array_length(v_short, 1) > 0 then
     perform _wix_append_review(p_order_id, 'Falta stock en Depósito: ' || array_to_string(v_short, ', '));
   end if;
-  if o.wix_fulfilled then
+  if o.wix_fulfilled and v_new > 0 then
     perform _wix_append_review(p_order_id, 'Marcado procesado en Wix: confirmá en Melania quién lo armó');
   end if;
-  insert into audit_logs (actor, action, entity, entity_id, detail)
-  values (p_actor, 'wix:reserve', 'channel_orders', p_order_id,
-          jsonb_build_object('number', o.number, 'missing', v_missing, 'short', v_short));
-  return case when v_any then 'reserved' else 'nothing' end;
+  if v_new > 0 or o.state = 'NEW' then
+    insert into audit_logs (actor, action, entity, entity_id, detail)
+    values (p_actor, 'wix:reserve', 'channel_orders', p_order_id,
+            jsonb_build_object('number', o.number, 'new', v_new, 'missing', v_missing, 'short', v_short));
+  end if;
+  return case when v_new > 0 then 'reserved' when v_any then 'noop:reserved' else 'nothing' end;
 end $$;
 
 -- ───────────── venta POS (Store, al instante) ─────────────
+-- Primera corrida: descuenta todos los ítems. Corridas siguientes (pedido ya
+-- PROCESSED): solo reintenta los ítems que quedaron sin equivalencia o con error.
 create function wix_pos_sale(p_order_id uuid, p_actor text) returns text
 language plpgsql as $$
 declare
@@ -451,7 +472,7 @@ declare
   it record;
   r record;
   v_loc uuid := (wix_settings()->>'location_store')::uuid;
-  v_act timestamptz := (wix_settings()->>'activated_at')::timestamptz;
+  v_ign timestamptz := _wix_ignore_before();
   v_missing text[] := '{}';
   v_failed text[] := '{}';
   v_any boolean := false;
@@ -459,14 +480,22 @@ declare
 begin
   select * into o from channel_orders where id = p_order_id for update;
   if not found then raise exception 'Pedido inexistente'; end if;
-  if o.state <> 'NEW' then return 'noop:' || o.state; end if;
-  if v_act is not null and o.ordered_at is not null and o.ordered_at < v_act then
+  if o.state not in ('NEW','PROCESSED') then return 'noop:' || o.state; end if;
+  if o.state = 'NEW' and v_ign is not null and o.ordered_at is not null and o.ordered_at < v_ign then
     update channel_orders set state = 'IGNORED' where id = p_order_id;
     return 'ignored';
   end if;
+  if o.state = 'PROCESSED' and not exists (
+       select 1 from channel_order_items where order_id = p_order_id and (not resolved or note is not null)) then
+    return 'noop:PROCESSED';
+  end if;
   if v_loc is null then raise exception 'Falta configurar la ubicación Store para Wix'; end if;
 
-  for it in select * from channel_order_items where order_id = p_order_id loop
+  for it in
+    select * from channel_order_items
+     where order_id = p_order_id and (o.state = 'NEW' or not resolved or note is not null)
+     order by external_line_id
+  loop
     if it.external_sku is null or not exists (select 1 from resolve_channel_sku('WIX', it.external_sku)) then
       update channel_order_items set resolved = false,
              note = case when it.external_sku is null then 'Sin SKU' else 'SKU sin equivalencia' end
@@ -474,7 +503,7 @@ begin
       v_missing := v_missing || coalesce(it.external_sku, it.name, '?');
       continue;
     end if;
-    update channel_order_items set resolved = true, note = null where id = it.id;
+    v_err := null;
     for r in select * from resolve_channel_sku('WIX', it.external_sku) loop
       begin
         perform _consume_fefo(r.product_id, v_loc, null, r.quantity * it.quantity,
@@ -484,14 +513,15 @@ begin
       exception when others then
         v_err := sqlerrm;
         v_failed := v_failed || (r.name || ' (' || v_err || ')');
-        update channel_order_items set note = v_err where id = it.id;
       end;
     end loop;
+    update channel_order_items set resolved = true, note = v_err where id = it.id;
   end loop;
 
   update channel_orders
      set state = 'PROCESSED', location_id = v_loc, paid_at = coalesce(paid_at, now()),
-         processed_at = now(), processed_by = 'Wix POS', review_reason = null
+         processed_at = coalesce(processed_at, now()), processed_by = coalesce(processed_by, 'Wix POS'),
+         review_reason = null
    where id = p_order_id;
   if array_length(v_missing, 1) > 0 then
     perform _wix_append_review(p_order_id, 'Sin equivalencia: ' || array_to_string(v_missing, ', '));
@@ -499,16 +529,21 @@ begin
   if array_length(v_failed, 1) > 0 then
     perform _wix_append_review(p_order_id, 'No se pudo descontar del Store: ' || array_to_string(v_failed, '; '));
   end if;
+  -- aviso de ítems que siguen con error de corridas anteriores
+  if exists (select 1 from channel_order_items where order_id = p_order_id and note is not null and note not in ('Sin SKU','SKU sin equivalencia')) then
+    perform _wix_append_review(p_order_id, 'Quedan ítems sin descontar del Store (ver detalle)');
+  end if;
   insert into audit_logs (actor, action, entity, entity_id, detail)
   values (p_actor, 'wix:pos_sale', 'channel_orders', p_order_id,
-          jsonb_build_object('number', o.number, 'missing', v_missing, 'failed', v_failed));
+          jsonb_build_object('number', o.number, 'retry', o.state = 'PROCESSED', 'missing', v_missing, 'failed', v_failed));
   return case when v_any then 'sold' else 'nothing' end;
 end $$;
 
 -- ───────────── procesar (egreso real con responsable) ─────────────
 -- p_lines: [{item_id, quantity}] en unidades del ítem de Wix; null = todo lo pendiente.
--- Devuelve {batch_id, lines:[{line_id, quantity}]} para crear el fulfillment en Wix.
-create function wix_process_order(p_order_id uuid, p_lines jsonb, p_actor_id uuid, p_actor text)
+-- p_batch: id del envío del formulario; si ya se procesó ese batch, devuelve lo mismo
+-- (evita el doble click / reenvío). Devuelve {batch_id, lines:[{line_id, quantity}]}.
+create function wix_process_order(p_order_id uuid, p_lines jsonb, p_actor_id uuid, p_actor text, p_batch uuid default null)
 returns jsonb language plpgsql as $$
 declare
   o channel_orders;
@@ -517,13 +552,19 @@ declare
   v_units numeric;
   v_pending numeric;
   v_take numeric;
-  v_batch uuid := gen_random_uuid();
+  v_batch uuid := coalesce(p_batch, gen_random_uuid());
   v_out jsonb := '[]'::jsonb;
   v_before numeric;
   v_left int;
 begin
   select * into o from channel_orders where id = p_order_id for update;
   if not found then raise exception 'Pedido inexistente'; end if;
+  if p_batch is not null and exists (select 1 from channel_order_fulfillments where batch_id = p_batch) then
+    select jsonb_agg(jsonb_build_object('line_id', i.external_line_id, 'quantity', f.quantity)) into v_out
+      from channel_order_fulfillments f join channel_order_items i on i.id = f.item_id
+     where f.batch_id = p_batch;
+    return jsonb_build_object('batch_id', p_batch, 'lines', v_out, 'repeated', true);
+  end if;
   if o.state not in ('RESERVED','PARTIAL') then
     raise exception 'El pedido no está reservado (estado: %)', o.state;
   end if;
@@ -533,17 +574,17 @@ begin
            coalesce((select (l->>'quantity')::numeric from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) l
                       where (l->>'item_id')::uuid = i.id), case when p_lines is null then null else 0 end) as asked
       from channel_order_items i where i.order_id = p_order_id and i.resolved
+     order by i.external_line_id
   loop
-    -- unidades del ítem todavía reservadas (mínimo entre sus productos)
     select min(floor((quantity - consumed - released) / per_unit)) into v_pending
       from reservations where item_id = it.id and status = 'ACTIVE';
     v_pending := coalesce(v_pending, 0);
-    v_units := case when it.asked is null then v_pending else least(it.asked, v_pending) end;
-    if v_units <= 0 then continue; end if;
     if it.asked is not null and it.asked > v_pending then
       raise exception 'El ítem "%" tiene % pendientes, no %', it.name, trim_scale(v_pending), trim_scale(it.asked);
     end if;
-    for r in select * from reservations where item_id = it.id and status = 'ACTIVE' for update loop
+    v_units := case when it.asked is null then v_pending else least(it.asked, v_pending) end;
+    if v_units <= 0 then continue; end if;
+    for r in select * from reservations where item_id = it.id and status = 'ACTIVE' order by id for update loop
       v_take := r.per_unit * v_units;
       v_before := r.consumed;
       update reservations
@@ -574,7 +615,9 @@ begin
   return jsonb_build_object('batch_id', v_batch, 'lines', v_out);
 end $$;
 
--- ───────────── liberar (cancelado / reembolsado antes de procesar) ─────────────
+-- ───────────── liberar (cancelado / reembolsado) ─────────────
+-- Antes de procesar: libera las reservas. Si ya salió mercadería (procesado,
+-- parcial o venta POS): no devuelve stock, deja aviso para revisar.
 create function wix_release_order(p_order_id uuid, p_reason text, p_actor text) returns text
 language plpgsql as $$
 declare
@@ -590,10 +633,8 @@ begin
    where order_id = p_order_id and status = 'ACTIVE';
   get diagnostics v_released = row_count;
   select count(*) into v_consumed from reservations where order_id = p_order_id and consumed > 0;
-  if v_consumed > 0 then
-    -- ya salió mercadería: no se devuelve sola
-    perform _wix_append_review(p_order_id, p_reason || ' después de procesar: si la clienta devuelve, cargá una devolución (RETURN_IN)');
-    update channel_orders set state = case when o.state = 'NEW' then 'CANCELED'::channel_order_state else o.state end where id = p_order_id;
+  if v_consumed > 0 or o.state in ('PROCESSED','PARTIAL') then
+    perform _wix_append_review(p_order_id, p_reason || ' después de descontar el stock: si la clienta devuelve el producto, cargá una devolución (RETURN_IN)');
   else
     update channel_orders set state = case when v_released > 0 then 'RELEASED'::channel_order_state else 'CANCELED'::channel_order_state end,
            review_reason = null
@@ -601,8 +642,8 @@ begin
   end if;
   insert into audit_logs (actor, action, entity, entity_id, detail)
   values (p_actor, 'wix:release', 'channel_orders', p_order_id,
-          jsonb_build_object('number', o.number, 'reason', p_reason, 'released', v_released, 'had_consumed', v_consumed > 0));
-  return case when v_consumed > 0 then 'review' when v_released > 0 then 'released' else 'canceled' end;
+          jsonb_build_object('number', o.number, 'reason', p_reason, 'released', v_released, 'had_consumed', v_consumed > 0 or o.state in ('PROCESSED','PARTIAL')));
+  return case when v_consumed > 0 or o.state in ('PROCESSED','PARTIAL') then 'review' when v_released > 0 then 'released' else 'canceled' end;
 end $$;
 
 -- lo marcaron procesado en Wix (no desde Melania): no descuenta solo, avisa
@@ -657,7 +698,8 @@ revoke execute on function _wix_sale_type(text) from public, anon, authenticated
 revoke execute on function _wix_append_review(uuid, text) from public, anon, authenticated;
 revoke execute on function wix_reserve_order(uuid, text) from public, anon, authenticated;
 revoke execute on function wix_pos_sale(uuid, text) from public, anon, authenticated;
-revoke execute on function wix_process_order(uuid, jsonb, uuid, text) from public, anon, authenticated;
+revoke execute on function wix_process_order(uuid, jsonb, uuid, text, uuid) from public, anon, authenticated;
+revoke execute on function _wix_ignore_before() from public, anon, authenticated;
 revoke execute on function wix_release_order(uuid, text, text) from public, anon, authenticated;
 revoke execute on function wix_mark_fulfilled_externally(uuid, text) from public, anon, authenticated;
 revoke execute on function wix_record_event(text, text, text, jsonb, text, integration_event_status) from public, anon, authenticated;
