@@ -66,7 +66,7 @@ export async function guardarCierre(formData: FormData) {
     const sinCuenta = lines.filter((l) => venta(l) !== 0 && !(l.account ?? "").trim());
     if (sinCuenta.length)
       fallar(
-        `Falta indicar en "Extras (cuenta)" a dónde entró la plata: ${sinCuenta
+        `Falta completar "¿Dónde ingresó el dinero?" en: ${sinCuenta
           .map((l) => l.customer || l.order_ref || "pago sin cliente")
           .join(", ")}. Si es efectivo, poné Caja fuerte o Caja chica. Podés guardar borrador y completarlo después.`
       );

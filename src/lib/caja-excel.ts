@@ -11,7 +11,7 @@ import { CONTADORES } from "./caja-calc";
 
 const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 const MONEDA = '#,##0;[Red]-#,##0';
-const COLS = ["PEDIDO", "CLIENTE", "DESCRIPCIÓN", "EFECTIVO", "INGRESOS DE\nDINERO", "POSNET", "LINK DE PAGO\nMP", "TRANSFERENCIA", "EXTRAS ", "PAGO \nUSD", "FACTURA"];
+const COLS = ["PEDIDO", "CLIENTE", "DESCRIPCIÓN", "EFECTIVO", "INGRESOS DE\nDINERO", "POSNET", "LINK DE PAGO\nMP", "TRANSFERENCIA", "DÓNDE INGRESÓ\nEL DINERO", "PAGO \nUSD", "FACTURA"];
 
 function hojaDia(wb: ExcelJS.Workbook, c: Cierre) {
   const [, m, d] = c.closing_date.split("-").map(Number);

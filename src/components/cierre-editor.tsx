@@ -135,7 +135,7 @@ export function CierreEditor({
                 {MONTOS.map((m) => (
                   <th key={m.k} className="px-1 py-1 w-28">{m.label}</th>
                 ))}
-                <th className="px-1 py-1 w-28">Extras (cuenta)</th>
+                <th className="px-1 py-1 w-32">¿Dónde ingresó el dinero?</th>
                 <th className="px-1 py-1 w-20">Pago USD</th>
                 <th className="px-1 py-1 w-20">Factura</th>
                 <th className="w-8"></th>
@@ -191,7 +191,7 @@ export function CierreEditor({
                     <input type="number" step="any" inputMode="decimal" value={l[m.k]} onChange={(e) => setLinea(l.key, { [m.k]: e.target.value })} className={`${campo} text-right`} />
                   </label>
                 ))}
-                <label className="text-xs text-soft">Extras (cuenta)<input list="cuentas-caja" value={l.account} placeholder="¿a dónde?" onChange={(e) => setLinea(l.key, { account: e.target.value })} className={campo + (faltaCuenta({ kind: l.kind, cash: num(l.cash), posnet: num(l.posnet), mp_link: num(l.mp_link), transfer: num(l.transfer), account: l.account }) ? " border-red-400 bg-red-50" : "")} /></label>
+                <label className="text-xs text-soft">¿Dónde ingresó el dinero?<input list="cuentas-caja" value={l.account} placeholder="¿a dónde?" onChange={(e) => setLinea(l.key, { account: e.target.value })} className={campo + (faltaCuenta({ kind: l.kind, cash: num(l.cash), posnet: num(l.posnet), mp_link: num(l.mp_link), transfer: num(l.transfer), account: l.account }) ? " border-red-400 bg-red-50" : "")} /></label>
                 <label className="text-xs text-soft">Pago USD<input type="number" step="any" inputMode="decimal" value={l.usd} onChange={(e) => setLinea(l.key, { usd: e.target.value })} className={`${campo} text-right`} /></label>
                 <label className="text-xs text-soft">Factura<input value={l.invoice} onChange={(e) => setLinea(l.key, { invoice: e.target.value })} className={campo} /></label>
               </div>
@@ -329,7 +329,7 @@ export function CierreEditor({
           onClick={(e) => {
             if (t.sinCuenta) {
               e.preventDefault();
-              alert(`Hay ${t.sinCuenta} pago(s) sin indicar en "Extras (cuenta)" a dónde entró la plata (marcados en rojo). Si es efectivo, poné Caja fuerte o Caja chica.`);
+              alert(`Hay ${t.sinCuenta} pago(s) sin completar "¿Dónde ingresó el dinero?" (marcados en rojo). Si es efectivo, poné Caja fuerte o Caja chica.`);
               return;
             }
             if (!confirm(`¿Enviar el cierre? Total ingresos ${pesos(t.ventas)} · gastos ${pesos(t.gastos)}. Joel y Mel van a ver el aviso.`)) e.preventDefault();

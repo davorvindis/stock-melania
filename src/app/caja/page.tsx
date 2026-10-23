@@ -146,7 +146,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           </ul>
           {sinCuenta.length > 0 && (
             <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
-              ⚠ Pagos sin indicar a dónde entraron (completar &quot;Extras&quot;):
+              ⚠ Pagos sin completar &quot;¿Dónde ingresó el dinero?&quot;:
               <ul className="mt-1 space-y-0.5">
                 {sinCuenta.map(({ c, l }, i) => (
                   <li key={i}>
