@@ -126,18 +126,18 @@ export function CierreEditor({
         </div>
         {/* escritorio: mismas columnas que la planilla */}
         <div className="hidden overflow-x-auto lg:block">
-          <table className="w-full min-w-[1100px] text-sm">
+          <table className="w-full min-w-[1400px] table-fixed text-sm">
             <thead>
               <tr className="text-left text-xs font-semibold uppercase text-soft">
                 <th className="px-1 py-1 w-20">Pedido</th>
-                <th className="px-1 py-1">Cliente</th>
-                <th className="px-1 py-1">Descripción</th>
+                <th className="px-1 py-1 w-80">Cliente</th>
+                <th className="px-1 py-1 w-52">Descripción</th>
                 {MONTOS.map((m) => (
-                  <th key={m.k} className="px-1 py-1 w-28">{m.label}</th>
+                  <th key={m.k} className="px-1 py-1 w-28 align-bottom">{m.label}</th>
                 ))}
-                <th className="px-1 py-1 w-32">¿Dónde ingresó el dinero?</th>
-                <th className="px-1 py-1 w-20">Pago USD</th>
-                <th className="px-1 py-1 w-20">Factura</th>
+                <th className="px-1 py-1 w-36 align-bottom">¿Dónde ingresó el dinero?</th>
+                <th className="px-1 py-1 w-24 align-bottom">Pago USD</th>
+                <th className="px-1 py-1 w-24 align-bottom">Factura</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
@@ -145,8 +145,8 @@ export function CierreEditor({
               {filas.map((l) => (
                 <tr key={l.key}>
                   <td className="p-1"><input value={l.order_ref} onChange={(e) => setLinea(l.key, { order_ref: e.target.value })} className={campo} /></td>
-                  <td className="p-1"><input value={l.customer} onChange={(e) => setLinea(l.key, { customer: e.target.value })} className={campo} /></td>
-                  <td className="p-1"><input value={l.description} onChange={(e) => setLinea(l.key, { description: e.target.value })} className={campo} /></td>
+                  <td className="p-1"><input value={l.customer} title={l.customer} onChange={(e) => setLinea(l.key, { customer: e.target.value })} className={campo} /></td>
+                  <td className="p-1"><input value={l.description} title={l.description} onChange={(e) => setLinea(l.key, { description: e.target.value })} className={campo} /></td>
                   {MONTOS.map((m) => (
                     <td key={m.k} className="p-1">
                       <input type="number" step="any" inputMode="decimal" value={l[m.k]} onChange={(e) => setLinea(l.key, { [m.k]: e.target.value })} className={`${campo} text-right`} />
