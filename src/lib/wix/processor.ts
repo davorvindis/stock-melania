@@ -140,8 +140,16 @@ export async function procesarEvento(eventId: string): Promise<string> {
     await cli.from("integration_events").update({ status: "PAUSED" }).eq("id", eventId);
     return "pausado";
   }
+  // eventos de formato viejo (ej. OrderRefunded de Stores) no traen id de pedido:
+  // el cambio llega igual por order_payment_status_updated / el sondeo
+  if (!ev.data.entity_id) {
+    await cli
+      .from("integration_events")
+      .update({ status: "SKIPPED", processed_at: new Date().toISOString(), attempts: ev.data.attempts + 1, result: "sin-pedido", error: null })
+      .eq("id", eventId);
+    return "sin-pedido";
+  }
   try {
-    if (!ev.data.entity_id) throw new Error("Evento sin id de pedido");
     const order = await getOrder(ev.data.entity_id);
     const res = await reconciliarPedido(order);
     await cli
