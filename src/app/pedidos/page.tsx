@@ -3,7 +3,9 @@ import { requireSection } from "@/lib/auth";
 import { getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
 import { badgeEstado, demorado } from "@/components/pedido-badge";
 import { fmtDateTime, fmtMoney } from "@/lib/types";
+import { actualizarPedidosAhora } from "@/lib/wix/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +43,20 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
 
   return (
     <div>
-      <PageTitle>Pedidos Wix</PageTitle>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <PageTitle>Pedidos Wix</PageTitle>
+        <form action={actualizarPedidosAhora}>
+          <SubmitButton className="rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-rose-deep hover:bg-blush-50">
+            ↻ Actualizar ahora
+          </SubmitButton>
+        </form>
+      </div>
       <Flash ok={sp.ok} error={sp.error} />
       <p className="mb-4 max-w-3xl text-sm text-soft">
         Los pedidos pagados en la tienda web quedan <b>reservados</b> en Depósito. Cuando armás y despachás uno, entrá y marcalo
         como procesado: ahí sale del stock con tu usuario como responsable y Wix lo marca procesado solo. Las ventas del local
-        (POS) se descuentan del Store al instante.
+        (POS) se descuentan del Store al instante. Melania revisa Wix sola cada 5 minutos; si no ves un pedido, tocá{" "}
+        <b>Actualizar ahora</b>.
       </p>
 
       <form method="get" className="mb-3 flex flex-wrap gap-2">

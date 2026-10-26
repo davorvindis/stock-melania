@@ -119,6 +119,26 @@ export async function cambiarOpcionesWix(formData: FormData) {
   volverOk("/wix", "Opciones guardadas");
 }
 
+// botón "Actualizar ahora" en Pedidos Wix: lo mismo que el cron de 5 min, a demanda
+export async function actualizarPedidosAhora() {
+  await requireSection("pedidos");
+  let r: Record<string, unknown>;
+  try {
+    r = await corridaSync();
+  } catch (e) {
+    volverConError("/pedidos", (e as Error).message);
+  }
+  if (!r.enabled) volverConError("/pedidos", "La integración con Wix está desconectada");
+  const poll = r.poll as { revisados: number } | undefined;
+  const ful = r.fulfillments as { ok: number; errores: number } | undefined;
+  volverOk(
+    "/pedidos",
+    `Actualizado desde Wix: ${poll?.revisados ?? 0} pedido(s) revisados` +
+      (ful?.ok ? `, ${ful.ok} despacho(s) enviados a Wix` : "") +
+      (ful?.errores ? `, ${ful.errores} despacho(s) con error` : "")
+  );
+}
+
 export async function sincronizarAhora() {
   await requireRole("ADMIN");
   let r: Record<string, unknown>;
