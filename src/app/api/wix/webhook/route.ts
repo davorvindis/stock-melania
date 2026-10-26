@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const entidad = ev.entityId ?? (ev.data.orderId as string | undefined) ?? null;
   const eventId = ev.id || `${ev.eventType}:${createHash("sha256").update(raw).digest("hex").slice(0, 32)}`;
   try {
-    const { id, nuevo } = await registrarEvento(eventId, ev.eventType, entidad, { slug: ev.slug, eventTime: ev.eventTime }, "webhook");
+    const { id, nuevo } = await registrarEvento(eventId, ev.eventType, entidad, { slug: ev.slug, eventTime: ev.eventTime, instanceId: ev.instanceId }, "webhook");
     if (nuevo) after(() => procesarEvento(id).catch(() => {}));
     return Response.json({ ok: true, nuevo });
   } catch (e) {
