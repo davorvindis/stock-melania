@@ -188,3 +188,58 @@ export async function resumenEquivalenciasWix(): Promise<{ total: number; mapead
     ultimaSync: ultima,
   };
 }
+
+// ── Ventas sin descontar (sin SKU / sin equivalencia / sin stock) ───
+
+export type SinDescontar = {
+  item_id: string;
+  order_id: string;
+  number: string | null;
+  channel_type: string | null;
+  state: string;
+  ordered_at: string | null;
+  customer: string | null;
+  external_sku: string | null;
+  name: string | null;
+  quantity: number;
+  note: string | null;
+};
+
+export async function getSinDescontar(): Promise<SinDescontar[]> {
+  const { data, error } = await db().from("v_wix_sin_descontar").select("*").order("ordered_at", { ascending: false }).limit(200);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SinDescontar[];
+}
+
+export async function contarSinDescontar(): Promise<number> {
+  const { count, error } = await db().from("v_wix_sin_descontar").select("item_id", { count: "exact", head: true });
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+export type Regularizado = {
+  id: string;
+  name: string | null;
+  external_sku: string | null;
+  quantity: number;
+  settled_at: string;
+  settled_by: string;
+  settled_action: "DESCONTADO" | "DESCARTADO";
+  settled_quantity: number | null;
+  settled_note: string | null;
+  order: { id: string; number: string | null; channel_type: string | null };
+  product: { sku: string; name: string } | null;
+};
+
+export async function getRegularizados(limite = 50): Promise<Regularizado[]> {
+  const { data, error } = await db()
+    .from("channel_order_items")
+    .select(
+      "id, name, external_sku, quantity, settled_at, settled_by, settled_action, settled_quantity, settled_note, order:channel_orders(id, number, channel_type), product:products!channel_order_items_settled_product_id_fkey(sku, name)"
+    )
+    .not("settled_at", "is", null)
+    .order("settled_at", { ascending: false })
+    .limit(limite);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as Regularizado[];
+}

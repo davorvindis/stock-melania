@@ -92,6 +92,48 @@ export async function actualizarPedidoDesdeWix(formData: FormData) {
   volverOk(back, `Actualizado desde Wix (${res})`);
 }
 
+// ── Ventas sin descontar: regularizar a mano ────────────────────────
+
+const SIN_DESCONTAR = "/pedidos/sin-descontar";
+
+// descontar: el operador elige el producto de Melania ("SKU · Nombre" del buscador) y la cantidad
+export async function descontarItemWix(formData: FormData) {
+  const user = await requireSection("pedidos");
+  const item = String(formData.get("item") ?? "");
+  if (!uuid.safeParse(item).success) volverConError(SIN_DESCONTAR, "Ítem inválido");
+  const elegido = String(formData.get("producto") ?? "").trim();
+  const sku = elegido.split(" · ")[0].trim();
+  if (!sku) volverConError(SIN_DESCONTAR, "Elegí el producto de Melania");
+  const cantidad = Number(formData.get("cantidad"));
+  if (!(cantidad > 0)) volverConError(SIN_DESCONTAR, "La cantidad tiene que ser mayor a 0");
+  const prod = await db().from("products").select("id").eq("sku", sku).maybeSingle();
+  if (prod.error) volverConError(SIN_DESCONTAR, prod.error.message);
+  if (!prod.data) volverConError(SIN_DESCONTAR, `No existe el producto "${elegido}": elegilo de la lista o crealo en Productos`);
+  const { error } = await db().rpc("wix_settle_item", {
+    p_item: item,
+    p_product: prod.data.id,
+    p_quantity: cantidad,
+    p_actor: user.alias,
+    p_note: String(formData.get("nota") ?? "").trim() || null,
+  });
+  if (error) volverConError(SIN_DESCONTAR, error.message);
+  after(() => publicarInventario().catch(() => {}));
+  volverOk(SIN_DESCONTAR, "Descontado del stock con el N° de pedido como motivo.");
+}
+
+export async function descartarItemWix(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const item = String(formData.get("item") ?? "");
+  if (!uuid.safeParse(item).success) volverConError(SIN_DESCONTAR, "Ítem inválido");
+  const { error } = await db().rpc("wix_discard_item", {
+    p_item: item,
+    p_actor: user.alias,
+    p_note: String(formData.get("motivo") ?? ""),
+  });
+  if (error) volverConError(SIN_DESCONTAR, error.message);
+  volverOk(SIN_DESCONTAR, "Línea descartada (queda registrado quién y por qué).");
+}
+
 // ── Integración (solo ADMIN) ────────────────────────────────────────
 
 export async function cambiarPulsador(formData: FormData) {

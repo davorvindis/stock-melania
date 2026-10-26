@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
-import { getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
+import { contarSinDescontar, getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
 import { badgeEstado, demorado } from "@/components/pedido-badge";
 import { fmtDateTime, fmtMoney } from "@/lib/types";
 import { actualizarPedidosAhora } from "@/lib/wix/actions";
@@ -25,14 +25,17 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   await requireSection("pedidos");
   const sp = await searchParams;
   const estado = sp.estado ?? "pendientes";
-  const pedidos = await getPedidosWix({
-    estado: estado === "todos" ? undefined : estado,
-    canal: sp.canal,
-    q: sp.q,
-    desde: sp.desde,
-    hasta: sp.hasta,
-    revisar: sp.revisar === "si",
-  });
+  const [pedidos, sinDescontar] = await Promise.all([
+    getPedidosWix({
+      estado: estado === "todos" ? undefined : estado,
+      canal: sp.canal,
+      q: sp.q,
+      desde: sp.desde,
+      hasta: sp.hasta,
+      revisar: sp.revisar === "si",
+    }),
+    contarSinDescontar(),
+  ]);
   const href = (patch: Partial<SP>) => {
     const p = new URLSearchParams();
     const all = { ...sp, ...patch };
@@ -77,6 +80,9 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         ))}
         <Link href={href({ estado: "todos", revisar: "si" })} className={`rounded-full px-3 py-1 text-sm ${sp.revisar === "si" ? "bg-amber-200 font-semibold text-amber-900" : "bg-white text-amber-800 hover:bg-amber-50"}`}>
           ⚠ A revisar
+        </Link>
+        <Link href="/pedidos/sin-descontar" className={`rounded-full px-3 py-1 text-sm ${sinDescontar > 0 ? "bg-amber-100 font-semibold text-amber-900" : "bg-white text-soft hover:bg-blush-100"}`}>
+          ⏳ Sin descontar{sinDescontar > 0 ? ` (${sinDescontar})` : ""}
         </Link>
       </div>
       <div className="mb-3 flex flex-wrap gap-2 text-sm">

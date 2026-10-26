@@ -13,6 +13,7 @@ Stock Melania es la **fuente de verdad** del stock. Wix manda los pedidos; Melan
 | Alguien lo **marca procesado en Wix** a mano | No descuenta solo. Queda reservado con aviso "confirmá en Melania quién lo armó". |
 | Venta en el **POS del local** (`channelInfo.type=POS`) | Egreso inmediato `SALE` desde **Store**, actor `wix` / responsable "Wix POS". **Karla no la carga a mano.** |
 | Ítem con **SKU sin equivalencia** o sin SKU | No descuenta ese ítem; aviso en el pedido y en el Dashboard. Se carga en `/equivalencias` y se toca "Actualizar desde Wix". |
+| Ítem que **no se pudo descontar** (sin SKU, sin equivalencia o sin stock) | Queda en **Pedidos Wix → Sin descontar** (`/pedidos/sin-descontar`). *Descontar*: se elige el producto de Melania y cantidad → egreso con el N° de pedido (Store si es POS, Depósito si es web); si no hay stock avisa y queda pendiente. *Descartar* (ADMIN/MANAGER, con motivo): no descuenta, queda registrado. Historial de lo regularizado en la misma pantalla. Las líneas regularizadas no se reintentan. |
 | Pedido pagado hace **más de 3 días** sin procesar | Aviso rojo en el Dashboard. |
 | Pedidos anteriores a la **primera conexión** | Se ignoran (`activated_at`). |
 | **Kits** en Wix | Descuentan el stock propio del kit armado (no sus componentes). |
