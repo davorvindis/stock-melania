@@ -32,6 +32,21 @@ function volverOk(path: string, msg: string): never {
 }
 const uuid = z.string().uuid();
 
+// ── Pedidos: marcar "A revisar" como resuelto (Yura, Mel, Joel) ──────
+export async function marcarPedidoRevisado(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const id = uuid.safeParse(String(formData.get("pedido") ?? ""));
+  if (!id.success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id.data}`;
+  const { error } = await db().rpc("wix_mark_reviewed", {
+    p_order_id: id.data,
+    p_note: String(formData.get("nota") ?? ""),
+    p_actor: user.alias,
+  });
+  if (error) volverConError(back, error.message);
+  volverOk(back, "Marcado como revisado: el aviso queda registrado en el historial");
+}
+
 // ── Pedidos: marcar procesado (egreso real con responsable) ─────────
 
 export async function procesarPedido(formData: FormData) {

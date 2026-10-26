@@ -30,6 +30,7 @@ const TABLAS = [
   "channel_order_items",
   "reservations",
   "channel_order_fulfillments",
+  "channel_order_reviews",
 ] as const;
 
 export const BUCKET = "backups";

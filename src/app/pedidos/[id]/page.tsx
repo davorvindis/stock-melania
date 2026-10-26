@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
-import { getDisponibles, getPedidoWix, pendientesItem } from "@/lib/wix/queries";
+import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem } from "@/lib/wix/queries";
 import { getWixSettings } from "@/lib/wix/processor";
-import { actualizarPedidoDesdeWix, procesarPedido } from "@/lib/wix/actions";
+import { actualizarPedidoDesdeWix, marcarPedidoRevisado, procesarPedido } from "@/lib/wix/actions";
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -13,14 +13,15 @@ import { badgeEstado, demorado } from "@/components/pedido-badge";
 export const dynamic = "force-dynamic";
 
 export default async function PedidoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; error?: string }> }) {
-  await requireSection("pedidos");
+  const user = await requireSection("pedidos");
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const r = await getPedidoWix(id);
   if (!r) notFound();
   const { pedido: p, items, fulfillments } = r;
-  const settings = await getWixSettings();
+  const [settings, revisiones] = await Promise.all([getWixSettings(), getRevisionesPedido(id)]);
+  const puedeRevisar = user.role === "ADMIN" || user.role === "MANAGER";
   const disp = p.location?.id ? await getDisponibles(p.location.id, items.flatMap((i) => i.reservations.map((x) => x.product.id))) : new Map();
   const pendientes = items.map((i) => ({ item: i, pend: pendientesItem(i) })).filter((x) => x.pend > 0);
   const puedeProcesar = (p.state === "RESERVED" || p.state === "PARTIAL") && pendientes.length > 0;
@@ -38,7 +39,43 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
       {p.review_reason && (
         <Card className="mt-3 border-amber-300 bg-amber-50">
           <p className="text-sm"><b className="text-amber-900">⚠ A revisar:</b> {p.review_reason}</p>
+          {puedeRevisar ? (
+            <form action={marcarPedidoRevisado} className="mt-2 flex flex-wrap items-center gap-2">
+              <input type="hidden" name="pedido" value={p.id} />
+              <input
+                name="nota"
+                required
+                placeholder="¿Qué se hizo? ej. devolvió la clienta, revertido en Movimientos"
+                className="min-w-[14rem] flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm"
+              />
+              <SubmitButton className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">
+                Marcar como revisado
+              </SubmitButton>
+            </form>
+          ) : (
+            <p className="mt-1 text-xs text-amber-800">Avisale a Yura, Mel o Joel para que lo resuelvan.</p>
+          )}
         </Card>
+      )}
+      {revisiones.length > 0 && (
+        <details className="mt-3 rounded-xl border border-blush-100 bg-white p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Revisiones ({revisiones.length})</summary>
+          <ul className="mt-2 space-y-2">
+            {revisiones.map((r) => (
+              <li key={r.id} className="rounded-lg bg-blush-50 p-2">
+                <div className="text-xs text-soft">
+                  ✓ {r.reviewed_by} · {fmtDateTime(r.reviewed_at)}
+                </div>
+                <div>
+                  <span className="text-soft">Aviso:</span> {r.reason}
+                </div>
+                <div>
+                  <span className="text-soft">Qué se hizo:</span> {r.note}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {demorado(p) && (
         <Card className="mt-3 border-red-300 bg-red-50">

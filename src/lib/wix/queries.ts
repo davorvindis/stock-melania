@@ -94,6 +94,18 @@ export async function getPedidoWix(id: string): Promise<{ pedido: PedidoWix; ite
   return { pedido: p.data as unknown as PedidoWix, items: (it.data ?? []) as unknown as ItemPedido[], fulfillments: (fu.data ?? []) as Fulfillment[] };
 }
 
+// avisos "A revisar" ya resueltos de un pedido (quién, cuándo, qué se hizo)
+export type RevisionPedido = { id: string; reason: string; note: string; reviewed_by: string; reviewed_at: string };
+export async function getRevisionesPedido(orderId: string): Promise<RevisionPedido[]> {
+  const { data, error } = await db()
+    .from("channel_order_reviews")
+    .select("id, reason, note, reviewed_by, reviewed_at")
+    .eq("order_id", orderId)
+    .order("reviewed_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as RevisionPedido[];
+}
+
 // unidades del ítem todavía reservadas (mínimo entre sus productos)
 export function pendientesItem(it: ItemPedido): number {
   const act = it.reservations.filter((r) => r.status === "ACTIVE");
