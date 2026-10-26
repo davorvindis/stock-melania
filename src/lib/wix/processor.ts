@@ -69,6 +69,10 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
 
   if (n.channel_type === "POS") {
     if (cancelado) return rpcTexto("wix_release_order", { p_order_id: orderId, p_reason: motivo(n), p_actor: ACTOR });
+    // Wix crea el pedido POS con número 0 y lo numera segundos después: sin número
+    // real no se descuenta (el motivo del movimiento es el N° de pedido); llega en el
+    // evento siguiente (order_approved) o en el sondeo
+    if (!n.number || n.number === "0") return "pos:esperando-numero";
     // primera vez descuenta todo; en corridas siguientes solo reintenta ítems con error / sin equivalencia
     if (n.wix_status === "APPROVED" || pagado) return rpcTexto("wix_pos_sale", { p_order_id: orderId, p_actor: ACTOR });
     return "pos:esperando";
