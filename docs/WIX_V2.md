@@ -46,7 +46,7 @@ Stock Melania es la **fuente de verdad** del stock. Wix manda los pedidos; Melan
 1. **Crear la app en Wix**: `manage.wix.com/account/custom-apps` → Create app. Permisos: *Read/Manage Orders*, *Read/Manage Products*, *Read/Manage Stores inventory* (v1 y v3). Webhooks: eCommerce → Order Created, Order Approved, Order Payment Status Updated, Order Fulfilled, Order Canceled; Order Transactions → Refund Completed. URL: `https://stock-melania.vercel.app/api/wix/webhook`. Guardar **App ID**, **App Secret** y **Public key** (Webhooks).
 2. **Instalarla en el sitio** de Melania (Install app / link de instalación). El `instanceId` se ve en el panel de la app (o llega en el webhook *App Instance Installed*).
 3. **Variables en Vercel** (Production): `WIX_APP_ID`, `WIX_APP_SECRET`, `WIX_INSTANCE_ID`, `WIX_PUBLIC_KEY` (PEM con `\n`), `WIX_SYNC_SECRET` (cualquier string largo), opcional `WIX_SITE_ID`. Redeploy.
-4. **Migraciones**: `supabase db push`. Luego en psql: insertar la fila `wix_sync` de `app_settings` (ver cabecera de `20261022130000_wix_cron.sql`).
+4. **Migraciones**: `supabase db push`. Luego en psql: insertar la fila `wix_sync` de `app_settings` (ver cabecera de `20261026130000_wix_cron.sql`).
 5. En `/wix`: **Probar conexión** → **Mapear catálogo** (revisar SKU que faltan de un lado u otro) → opciones.
 6. **Pruebas**: una venta chica en el POS (baja Store); un pedido web de prueba pagado (queda reservado) → procesarlo desde `/pedidos` (sale del stock y Wix lo marca procesado); cancelar uno (libera).
 7. **Conectar** desde `/wix` y avisar a Joel que Karla deje de cargar las ventas a mano.
