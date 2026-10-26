@@ -9,7 +9,7 @@ Objetivo: Stock Melania = stock real. Wix manda pedidos; nosotros reservamos (we
 - `apply_movement_batch` líneas no-kit NO hacen FEFO (solo `is_kit` usa `_consume_fefo`) → el egreso Wix debe llamar `_consume_fefo` por producto.
 - "Disponible" hoy se calcula en TS (`isAvailable`, queries.ts:236); no existe reservado ni disponible por ubicación → va a SQL.
 - `locations` no tiene `code`; se identifican por nombre ("Depósito"/"Store", renombrables) → guardar ids en settings.
-- `inventory_movements.reason` = N° de pedido (así agrupa /ventas) → pedidos Wix: `reason = "Wix #<number>"`, mismo `occurred_at` por pedido.
+- `inventory_movements.reason` = N° de pedido (así agrupa /ventas) → pedidos Wix: `reason = "<number>" (desde 27/10; antes "Wix #<number>")`, mismo `occurred_at` por pedido.
 - `proxy.ts` solo deja pasar `/api/backup` sin sesión → agregar `/api/wix/*` con verificación propia.
 - Wix: API Key solo sirve desde la CUENTA dueña del sitio (no colaborador). Custom app (manage.wix.com/account/custom-apps) se crea desde cuenta propia, se instala como colaborador, da webhooks firmados (JWT RS256) + OAuth client_credentials (token 4h). → Recomendado.
 - Wix descuenta su propio inventario al pagar (no desactivable salvo "sin seguimiento"). Nosotros sobrescribimos con cantidad absoluta → OK siendo fuente de verdad.

@@ -57,7 +57,7 @@ Stock Melania es la **fuente de verdad** del stock. Wix manda los pedidos; Melan
 - **Avisos** en el Dashboard: *demorados* (+3 días) → armar; *a revisar* → abrir el pedido: cargar equivalencia faltante y "Actualizar desde Wix", revisar reembolso, o confirmar quién lo armó.
 - **Producto/combo nuevo en Wix**: cargarlo en *Equivalencias Wix* con el mismo SKU y tocar *Mapear catálogo* en `/wix`.
 - **Algo descuenta mal**: `/wix` → *Desconectar* con motivo. Se sigue todo a mano. Arreglado el problema, *Conectar* y elegir qué hacer con la cola.
-- Las ventas Wix aparecen en *Ventas* con N° de pedido `Wix #1234` y en *Movimientos*; los POS con responsable "Wix POS".
+- Las ventas Wix aparecen en *Ventas* con el N° de pedido (`1234`, igual que la carga manual) y en *Movimientos*; los POS con responsable "Wix POS".
 
 ## Pendiente / a verificar con pedidos reales
 
