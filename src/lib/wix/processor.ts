@@ -33,6 +33,8 @@ export type WixSettings = {
   location_store: string | null;
   last_poll_at: string | null;
   catalog_version: string | null;
+  last_reconcile_at?: string | null;
+  last_reconcile_diffs?: number | null;
 };
 
 export async function getWixSettings(): Promise<WixSettings> {
@@ -428,6 +430,52 @@ export async function mapearCatalogo(actor: string): Promise<{ version: string; 
   return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };
 }
 
+// ── Conciliación diaria de inventario ───────────────────────────────
+// Compara lo que muestra Wix con lo que publicaríamos. Las diferencias quedan
+// en auditoría y sus productos vuelven a la cola para publicarse de nuevo.
+
+export async function conciliarInventario(actor = ACTOR): Promise<{ revisados: number; diferencias: number }> {
+  const s = await getWixSettings();
+  if (!s.enabled || !s.sync_inventory || !wixConfigurado() || !s.location_deposito) return { revisados: 0, diferencias: 0 };
+  const version = s.catalog_version ?? (await getCatalogVersion());
+  const enWix = version === "V3_CATALOG" ? await listarSkusV3() : await listarSkusV1();
+  const porSku = new Map(enWix.map((w) => [w.sku.toUpperCase(), w]));
+  const cli = db();
+  const eqs = await cli
+    .from("channel_skus")
+    .select("id, external_sku, active, wix_product_id, wix_variant_id, wix_inventory_item_id, wix_tracked, lines:channel_sku_lines(product_id, quantity)")
+    .eq("active", true);
+  if (eqs.error) throw new Error(eqs.error.message);
+  const lista = (eqs.data ?? []) as unknown as Eq[];
+  const disp = new Map<string, number>();
+  const d = await cli.from("v_stock_disponible").select("product_id, available").eq("location_id", s.location_deposito);
+  if (d.error) throw new Error(d.error.message);
+  for (const r of d.data ?? []) disp.set(r.product_id, Number(r.available));
+
+  let revisados = 0;
+  const difs: { sku: string; wix: number | null; melania: number }[] = [];
+  const reencolar = new Set<string>();
+  for (const e of lista) {
+    const w = porSku.get(e.external_sku.toUpperCase());
+    if (!w || w.tracked !== true) continue; // sin seguimiento en Wix no hay cantidad que comparar
+    revisados++;
+    const nuestro = disponibleSku(e, disp);
+    if (w.quantity !== nuestro) {
+      difs.push({ sku: e.external_sku, wix: w.quantity, melania: nuestro });
+      for (const l of e.lines) reencolar.add(l.product_id);
+    }
+  }
+  if (reencolar.size) {
+    const q = await cli.from("wix_sync_queue").upsert([...reencolar].map((product_id) => ({ product_id, queued_at: new Date().toISOString() })));
+    if (q.error) throw new Error(q.error.message);
+  }
+  if (difs.length) {
+    await cli.from("audit_logs").insert({ actor, action: "wix:inventory_diff", entity: "channel_skus", entity_id: null, detail: { revisados, diferencias: difs.slice(0, 200) } });
+  }
+  await patchWixSettings({ last_reconcile_at: new Date().toISOString(), last_reconcile_diffs: difs.length }, actor);
+  return { revisados, diferencias: difs.length };
+}
+
 export async function probarConexion(): Promise<{ ok: boolean; detalle: string }> {
   try {
     if (!wixConfigurado()) return { ok: false, detalle: "Faltan variables WIX_APP_ID / WIX_APP_SECRET / WIX_INSTANCE_ID en el servidor" };
@@ -446,6 +494,11 @@ export async function corridaSync(): Promise<Record<string, unknown>> {
   const pend = await procesarPendientes();
   const poll = await sondearPedidos();
   const ful = await sincronizarFulfillments();
+  // una vez por día: conciliar antes de publicar, así lo que difiere sale en esta misma corrida
+  let conciliacion: Record<string, unknown> | null = null;
+  if (!s.last_reconcile_at || Date.now() - Date.parse(s.last_reconcile_at) > 86400_000) {
+    conciliacion = await conciliarInventario().catch((e) => ({ error: (e as Error).message }));
+  }
   const inv = await publicarInventario();
-  return { enabled: true, pendientes: pend, poll, fulfillments: ful, inventario: inv };
+  return { enabled: true, pendientes: pend, poll, fulfillments: ful, conciliacion, inventario: inv };
 }

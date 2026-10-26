@@ -8,6 +8,7 @@ import { db } from "../db";
 import { requireRole, requireSection } from "../auth";
 import { getOrder } from "./client";
 import {
+  conciliarInventario,
   corridaSync,
   descartarPausados,
   getWixSettings,
@@ -138,6 +139,20 @@ export async function publicarTodoElStock() {
     volverConError("/wix", (e as Error).message);
   }
   volverOk("/wix", `Publicado a Wix: ${r.skus} SKU, ${r.errores} con error, ${r.omitidos} omitidos (sin mapeo o sin seguimiento)`);
+}
+
+export async function conciliarStockWix() {
+  const user = await requireRole("ADMIN");
+  let r: Awaited<ReturnType<typeof conciliarInventario>>;
+  try {
+    r = await conciliarInventario(user.alias);
+    if (r.diferencias) await publicarInventario();
+  } catch (e) {
+    volverConError("/wix", (e as Error).message);
+  }
+  volverOk("/wix", r.revisados === 0
+    ? "Nada para conciliar (integración apagada, publicación desactivada o sin SKU con seguimiento)"
+    : `Conciliación: ${r.revisados} SKU revisados, ${r.diferencias} con diferencia${r.diferencias ? " (corregidos)" : ""}`);
 }
 
 export async function mapearCatalogoWix() {

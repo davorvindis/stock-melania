@@ -3,7 +3,7 @@ import { requireRole, requireSection } from "@/lib/auth";
 import { getWixSettings } from "@/lib/wix/processor";
 import { wixConfigurado } from "@/lib/wix/client";
 import { contarEventos, getEventosWix, resumenEquivalenciasWix } from "@/lib/wix/queries";
-import { cambiarOpcionesWix, cambiarPulsador, mapearCatalogoWix, probarConexionWix, publicarTodoElStock, reintentarEvento, sincronizarAhora } from "@/lib/wix/actions";
+import { cambiarOpcionesWix, cambiarPulsador, conciliarStockWix, mapearCatalogoWix, probarConexionWix, publicarTodoElStock, reintentarEvento, sincronizarAhora } from "@/lib/wix/actions";
 import { fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, Stat, input, label, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -69,11 +69,16 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
         </div>
       </Card>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Eventos pendientes" value={(conteo.PENDING ?? 0) + pausados} alert={(conteo.PENDING ?? 0) + pausados > 0} />
         <Stat label="Eventos con error" value={conteo.ERROR ?? 0} alert={(conteo.ERROR ?? 0) > 0} />
         <Stat label="SKU mapeados en Wix" value={`${eq.mapeadas}/${eq.total}`} alert={eq.mapeadas < eq.total} />
         <Stat label="Último sondeo" value={s.last_poll_at ? fmtDateTime(s.last_poll_at) : "—"} />
+        <Stat
+          label="Última conciliación"
+          value={s.last_reconcile_at ? `${fmtDateTime(s.last_reconcile_at)} · ${s.last_reconcile_diffs ?? 0} dif.` : "—"}
+          alert={(s.last_reconcile_diffs ?? 0) > 0}
+        />
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -84,12 +89,14 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
             <form action={mapearCatalogoWix}><SubmitButton className={btn}>Mapear catálogo de Wix</SubmitButton></form>
             <form action={sincronizarAhora}><SubmitButton className={btn}>Sincronizar ahora</SubmitButton></form>
             <form action={publicarTodoElStock}><SubmitButton className={btn}>Publicar todo el disponible</SubmitButton></form>
+            <form action={conciliarStockWix}><SubmitButton className={btn}>Conciliar stock con Wix</SubmitButton></form>
           </div>
           <ul className="mt-3 space-y-1 text-xs text-soft">
             <li><b>Probar conexión</b>: verifica credenciales y versión de catálogo.</li>
             <li><b>Mapear catálogo</b>: vincula cada SKU de <Link href="/equivalencias" className="text-rose-deep hover:underline">Equivalencias</Link> con su producto/variante en Wix. Hacelo al principio y cada vez que Joel cree productos nuevos.</li>
             <li><b>Sincronizar ahora</b>: procesa pendientes, sondea pedidos nuevos, manda fulfillments y publica stock (lo mismo que hace el cron).</li>
             <li><b>Publicar todo</b>: manda el disponible de Depósito de todos los SKU a Wix.</li>
+            <li><b>Conciliar</b>: compara el stock que muestra Wix con el disponible de Melania y corrige las diferencias. Corre solo una vez por día.</li>
           </ul>
         </Card>
         <Card>

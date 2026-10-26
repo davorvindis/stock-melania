@@ -58,13 +58,13 @@ Objetivo: Stock Melania = stock real. Wix manda pedidos; nosotros reservamos (we
 - [x] Action `procesarPedido` → `wix_process_order` → `createFulfillment` en Wix (líneas procesadas) → si Wix falla: stock ya descontado, marcar `fulfillment_pending` y reintento por cron
 - [x] Dashboard: avisos "pedidos pagados >3 días", "pedidos a revisar" (SKU sin equivalencia / reembolso post-proceso / stock insuficiente), "integración Wix pausada"
 - [x] Stock y Nuevo movimiento: columnas Reservado y Disponible; error claro "Reservado por pedidos web"
-- [ ] /ventas: pedidos Wix agrupados por `reason` (verificar que agrupe bien)
+- [x] /ventas: pedidos Wix agrupados por `reason` (verificado: `occurred_at` = now() de la transacción → 1 pedido; mixto minorista/mayorista = 2 grupos por tipo)
 
 ## Fase 4 — Reconciliación y publicación de stock a Wix
 - [x] `/api/wix/sync` (secret header): `searchOrders` desde `last_poll_at − 1h`, aplica reglas a lo que falte (idempotente); programado con pg_cron cada 5 min (o Vercel Pro)
 - [x] Cola `wix_sync_queue(product_id)` marcada por trigger en `stock_balances`/`reservations`; flush en `after()` tras cada action y en el cron: calcula disponible Depósito por SKU Wix (packs = floor(disp/n), combos = min(componente/cant), variantes -MAY etc. = igual al principal), push absoluto (v1 `updateInventoryVariants` con `trackQuantity:true` / v3 bulk update con revision fresca)
 - [ ] Activar tracking en los ~39 productos (previa decisión del dueño)
-- [ ] Reconciliación diaria: comparar Wix vs nuestro disponible, log de diferencias
+- [x] Conciliación diaria (`conciliarInventario`): en `corridaSync` 1×/24 h + botón en /wix; diferencias → `audit_logs` `wix:inventory_diff` + reencola productos
 
 ## Fase 5 — Pruebas reales, activación, docs
 - [ ] Venta chica POS con Karla → baja Store (verificar `channelInfo.type=POS`, estados iniciales)
