@@ -79,10 +79,20 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   }
 
   if (cancelado) return rpcTexto("wix_release_order", { p_order_id: orderId, p_reason: motivo(n), p_actor: ACTOR });
-  if (!pagado) return `esperando-pago:${n.payment_status}`;
+  // pedido editado en Wix: antes de despachar la reserva sigue a Wix (cantidades, productos sacados);
+  // ya despachado no se toca (lo agregado va en un pedido nuevo)
+  const ed = await cli.rpc("wix_sync_order_items", { p_order_id: orderId, p_actor: ACTOR });
+  if (ed.error) throw new Error(`wix_sync_order_items: ${ed.error.message}`);
+  const edicion = ed.data as { resultado: string; avisos?: string[] };
+  const marca = edicion.resultado.startsWith("editado") ? `+${edicion.resultado}` : "";
+  if (!pagado) {
+    for (const aviso of edicion.avisos ?? []) await cli.rpc("_wix_append_review", { p_order: orderId, p_text: aviso });
+    return `esperando-pago:${n.payment_status}${marca}`;
+  }
 
   // reservar es idempotente: agrega solo lo nuevo (ej. equivalencia cargada después)
-  let res = await rpcTexto("wix_reserve_order", { p_order_id: orderId, p_actor: ACTOR });
+  let res = (await rpcTexto("wix_reserve_order", { p_order_id: orderId, p_actor: ACTOR })) + marca;
+  for (const aviso of edicion.avisos ?? []) await cli.rpc("_wix_append_review", { p_order: orderId, p_text: aviso });
   // etiqueta "Mayorista" en Wix → lo reservado sale como venta mayorista
   const tipo = await rpcTexto("wix_apply_order_tags", { p_order_id: orderId, p_actor: ACTOR });
   if (tipo !== "sin-cambios") res += `+${tipo}`;

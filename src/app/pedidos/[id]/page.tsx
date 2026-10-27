@@ -24,7 +24,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   const puedeRevisar = user.role === "ADMIN" || user.role === "MANAGER";
   const disp = p.location?.id ? await getDisponibles(p.location.id, items.flatMap((i) => i.reservations.map((x) => x.product.id))) : new Map();
   const pendientes = items.map((i) => ({ item: i, pend: pendientesItem(i) })).filter((x) => x.pend > 0);
-  const puedeProcesar = (p.state === "RESERVED" || p.state === "PARTIAL") && pendientes.length > 0;
+  // editado en Wix después de armar: unidades que hay que sacar del paquete (vuelven al stock al rearmar)
+  const aSacar = items.flatMap((i) => i.reservations.filter((rv) => Number(rv.to_return) > 0).map((rv) => ({ item: i, rv })));
+  const puedeProcesar = (p.state === "RESERVED" || p.state === "PARTIAL") && (pendientes.length > 0 || aSacar.length > 0);
   const siteId = process.env.WIX_SITE_ID;
   const canal = p.channel_type === "POS" ? "Local (POS)" : p.channel_type === "BACKOFFICE_MERCHANT" ? "Manual en Wix" : "Tienda web";
   const porItem = new Map<string, typeof fulfillments>();
@@ -182,6 +184,11 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                             {fmtQty(f.quantity)} · {f.actor} · {fmtDateTime(f.created_at)} {f.wix_synced ? "✓ Wix" : <span className="text-amber-800">(Wix pendiente)</span>}
                           </div>
                         ))}
+                        {it.reservations.filter((rv) => Number(rv.to_return) > 0).map((rv) => (
+                          <div key={rv.id} className="font-medium text-red-700">
+                            Sacar del paquete: {fmtQty(rv.to_return)} {rv.product.name}
+                          </div>
+                        ))}
                         {it.note && it.resolved && <div className="text-amber-800">{it.note}</div>}
                       </td>
                       {puedeProcesar && (
@@ -197,6 +204,20 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
               </tbody>
             </table>
           </div>
+          {puedeProcesar && aSacar.length > 0 && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+              <input type="hidden" name="devoluciones" value="1" />
+              <b className="text-red-800">El pedido se editó en Wix: sacá del paquete</b>
+              <ul className="mt-1 list-disc pl-5">
+                {aSacar.map(({ rv }) => (
+                  <li key={rv.id}>
+                    {fmtQty(rv.to_return)} × {rv.product.name}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-red-800">Al marcar como procesado, esas unidades vuelven al stock del Depósito.</p>
+            </div>
+          )}
           {puedeProcesar && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <SubmitButton className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">

@@ -64,7 +64,8 @@ export async function procesarPedido(formData: FormData) {
     if (!Number.isInteger(q) || q < 0) volverConError(back, "Las cantidades deben ser enteras");
     if (q > 0) lineas.push({ item_id: itemId, quantity: q });
   }
-  if (lineas.length === 0) volverConError(back, "Indicá qué cantidades estás despachando");
+  // si solo hay que sacar cosas del paquete (pedido editado en Wix), se procesa sin cantidades nuevas
+  if (lineas.length === 0 && formData.get("devoluciones") !== "1") volverConError(back, "Indicá qué cantidades estás despachando");
   const batchRaw = String(formData.get("batch") ?? "");
   const batch = uuid.safeParse(batchRaw).success ? batchRaw : null; // evita doble envío del mismo formulario
   const { data, error } = await db().rpc("wix_process_order", {
@@ -75,7 +76,7 @@ export async function procesarPedido(formData: FormData) {
     p_batch: batch,
   });
   if (error) volverConError(back, error.message);
-  const r = data as { batch_id: string; repeated?: boolean };
+  const r = data as { batch_id: string; repeated?: boolean; lines?: unknown[]; devueltos?: unknown[] };
   if (r.repeated) volverOk(back, "Ese despacho ya estaba registrado (no se descontó dos veces).");
   // avisar a Wix (si falla o está desconectado, el stock ya salió: queda pendiente y lo reintenta el cron)
   const settings = await getWixSettings();
@@ -85,7 +86,9 @@ export async function procesarPedido(formData: FormData) {
     ? "Stock descontado. La integración está desconectada: Wix no se marcó (se hará al reconectar)."
     : ful.errores > 0
       ? "Stock descontado. No se pudo marcar en Wix todavía (se reintenta solo)."
-      : "Pedido procesado: stock descontado y marcado como procesado en Wix.";
+      : (r.lines?.length ?? 0) === 0
+        ? "Pedido rearmado: lo sacado del paquete volvió al stock del Depósito."
+        : `Pedido procesado: stock descontado y marcado como procesado en Wix.${r.devueltos?.length ? " Lo sacado del paquete volvió al stock." : ""}`;
   volverOk(back, msg);
 }
 

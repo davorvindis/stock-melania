@@ -42,6 +42,7 @@ export type ItemPedido = {
     quantity: number;
     consumed: number;
     released: number;
+    to_return: number; // despachado de más: sacar del paquete al rearmar
     status: "ACTIVE" | "CONSUMED" | "RELEASED";
     sale_type: string;
     product: { id: string; sku: string; name: string; unit: string };
@@ -86,7 +87,7 @@ export async function getPedidoWix(id: string): Promise<{ pedido: PedidoWix; ite
     cli.from("channel_orders").select(SELECT).eq("id", id).maybeSingle(),
     cli
       .from("channel_order_items")
-      .select("id, external_line_id, external_sku, name, quantity, unit_price, resolved, note, reservations(id, per_unit, quantity, consumed, released, status, sale_type, product:products(id, sku, name, unit))")
+      .select("id, external_line_id, external_sku, name, quantity, unit_price, resolved, note, reservations(id, per_unit, quantity, consumed, released, to_return, status, sale_type, product:products(id, sku, name, unit))")
       .eq("order_id", id)
       .order("external_line_id"),
     cli.from("channel_order_fulfillments").select("id, quantity, actor, created_at, wix_synced, wix_error, item_id").eq("order_id", id).order("created_at"),
