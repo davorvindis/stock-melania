@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { contarSinDescontar, getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
-import { badgeEstado, demorado } from "@/components/pedido-badge";
+import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
 import { fmtDateTime, fmtMoney } from "@/lib/types";
 import { actualizarPedidosAhora } from "@/lib/wix/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
@@ -9,7 +9,7 @@ import { SubmitButton } from "@/components/submit-button";
 
 export const dynamic = "force-dynamic";
 
-type SP = { ok?: string; error?: string; estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: string };
+type SP = { ok?: string; error?: string; estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: string; entrega?: string };
 
 const ESTADOS: [string, string][] = [
   ["pendientes", "Para armar"],
@@ -25,7 +25,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   await requireSection("pedidos");
   const sp = await searchParams;
   const estado = sp.estado ?? "pendientes";
-  const [pedidos, sinDescontar] = await Promise.all([
+  const [todos, sinDescontar] = await Promise.all([
     getPedidosWix({
       estado: estado === "todos" ? undefined : estado,
       canal: sp.canal,
@@ -36,6 +36,13 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
     }),
     contarSinDescontar(),
   ]);
+  // por método de entrega; en "Para armar", primero lo que sale antes (moto ~13 h, correo hasta 18 h, retiro)
+  let pedidos = sp.entrega ? todos.filter((p) => metodoEntrega(p).clave === sp.entrega) : todos;
+  if (estado === "pendientes") {
+    pedidos = [...pedidos].sort(
+      (a, b) => metodoEntrega(a).orden - metodoEntrega(b).orden || (a.ordered_at ?? "").localeCompare(b.ordered_at ?? "")
+    );
+  }
   const href = (patch: Partial<SP>) => {
     const p = new URLSearchParams();
     const all = { ...sp, ...patch };
@@ -92,8 +99,18 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
           </Link>
         ))}
       </div>
+      <div className="mb-3 flex flex-wrap gap-2 text-sm">
+        {[["", "Todas las entregas"], ["MOTO", "🛵 Motomensajería"], ["CORREO", "📦 Correo Argentino"], ["RETIRO", "🏬 Retiro en sucursal"]].map(([k, v]) => (
+          <Link key={k} href={href({ entrega: k || undefined })} className={`rounded-full px-3 py-1 ${(sp.entrega ?? "") === k ? "bg-blush-100 font-semibold" : "text-soft hover:bg-blush-100"}`}>
+            {v}
+            {k && ` (${todos.filter((p) => metodoEntrega(p).clave === k).length})`}
+          </Link>
+        ))}
+      </div>
 
-      <p className="mb-2 text-sm text-soft">{pedidos.length} pedido(s)</p>
+      <p className="mb-2 text-sm text-soft">
+        {pedidos.length} pedido(s){estado === "pendientes" && " · ordenados para armar: moto, correo, retiro (el más viejo primero)"}
+      </p>
 
       {/* mobile */}
       <div className="space-y-2 md:hidden">
@@ -104,6 +121,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               {badgeEstado(p)}
             </div>
             <div className="text-sm">{p.customer ?? p.email ?? "—"}</div>
+            {metodoEntrega(p).clave !== "NINGUNA" && <div className="mt-1">{badgeEntrega(p)}</div>}
             <div className="text-xs text-soft">
               {canal(p)} · {p.ordered_at ? fmtDateTime(p.ordered_at) : "—"} · {fmtMoney(p.total)}
             </div>
@@ -124,6 +142,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                 <th className={th}>N°</th>
                 <th className={th}>Fecha</th>
                 <th className={th}>Canal</th>
+                <th className={th}>Entrega</th>
                 <th className={th}>Cliente</th>
                 <th className={th}>Total</th>
                 <th className={th}>Estado</th>
@@ -139,6 +158,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                   </td>
                   <td className={td}>{p.ordered_at ? fmtDateTime(p.ordered_at) : "—"}</td>
                   <td className={td}>{canal(p)}</td>
+                  <td className={td}>{badgeEntrega(p)}</td>
                   <td className={td}>
                     {p.customer ?? "—"}
                     {p.email && <div className="text-xs text-soft">{p.email}</div>}
@@ -153,7 +173,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                 </tr>
               ))}
               {pedidos.length === 0 && (
-                <tr><td className={td} colSpan={8}>No hay pedidos con esos filtros.</td></tr>
+                <tr><td className={td} colSpan={9}>No hay pedidos con esos filtros.</td></tr>
               )}
             </tbody>
           </table>

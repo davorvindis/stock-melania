@@ -21,6 +21,7 @@ export type PedidoWix = {
   processed_by: string | null;
   review_reason: string | null;
   wholesale: boolean;
+  envio_titulo: string | null; // método de entrega elegido en Wix (shippingInfo.title)
   wix_fulfilled: boolean;
   created_at: string;
   updated_at: string;
@@ -59,7 +60,7 @@ export const ESTADOS_PEDIDO: Record<PedidoWix["state"], string> = {
   IGNORED: "Ignorado",
 };
 
-const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, wholesale, created_at, updated_at";
+const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
 
 export async function getPedidosWix(f: { estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: boolean; limite?: number }): Promise<PedidoWix[]> {
   let q = db().from("channel_orders").select(SELECT).order("ordered_at", { ascending: false, nullsFirst: false }).limit(f.limite ?? 300);

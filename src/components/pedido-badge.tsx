@@ -16,3 +16,24 @@ export function badgeEstado(p: PedidoWix) {
 export function demorado(p: PedidoWix): boolean {
   return (p.state === "RESERVED" || p.state === "PARTIAL") && !!p.paid_at && Date.now() - new Date(p.paid_at).getTime() > 3 * 86400_000;
 }
+
+// método de entrega de Wix → grupo para armar (la moto pasa ~13 h, el correo hasta 18 h)
+export type Entrega = { clave: "MOTO" | "CORREO" | "RETIRO" | "OTRO" | "NINGUNA"; label: string; orden: number; color: string };
+export function metodoEntrega(p: PedidoWix): Entrega {
+  const t = (p.envio_titulo ?? "").toLowerCase();
+  if (!t) return { clave: "NINGUNA", label: "—", orden: 9, color: "" };
+  if (t.includes("moto")) return { clave: "MOTO", label: "🛵 Motomensajería", orden: 1, color: "bg-rose-100 text-rose-800" };
+  if (t.includes("correo")) return { clave: "CORREO", label: "📦 Correo Argentino", orden: 2, color: "bg-sky-100 text-sky-800" };
+  if (t.includes("retiro") || t.includes("sucursal")) return { clave: "RETIRO", label: "🏬 Retiro en sucursal", orden: 3, color: "bg-emerald-100 text-emerald-800" };
+  return { clave: "OTRO", label: p.envio_titulo!.trim(), orden: 4, color: "bg-blush-100 text-ink" };
+}
+
+export function badgeEntrega(p: PedidoWix) {
+  const e = metodoEntrega(p);
+  if (e.clave === "NINGUNA") return <span className="text-soft">—</span>;
+  return (
+    <span title={p.envio_titulo ?? ""} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${e.color}`}>
+      {e.label}
+    </span>
+  );
+}
