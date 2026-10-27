@@ -92,7 +92,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
         <Card>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             <dt className="text-soft">Estado</dt><dd>{badgeEstado(p)}</dd>
-            <dt className="text-soft">Canal</dt><dd>{canal}</dd>
+            <dt className="text-soft">Canal</dt><dd>{canal}{p.wholesale && <span className="ml-2 rounded-full bg-rose-deep px-2 py-0.5 text-xs font-semibold text-white">Mayorista</span>}</dd>
             <dt className="text-soft">Cliente</dt><dd>{p.customer ?? "—"}{p.email && <span className="text-soft"> · {p.email}</span>}</dd>
             <dt className="text-soft">Fecha</dt><dd>{p.ordered_at ? fmtDateTime(p.ordered_at) : "—"}</dd>
             <dt className="text-soft">Total</dt><dd>{fmtMoney(p.total)} {p.currency ?? ""}</dd>

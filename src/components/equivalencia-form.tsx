@@ -38,6 +38,15 @@ export function EquivalenciaForm({ e, productos }: { e?: Equivalencia; productos
           <input type="text" name="notas" defaultValue={e?.notes ?? ""} className={input} />
         </div>
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="publicar" value="si" defaultChecked={e ? e.publish_stock : true} className="mt-1 h-4 w-4 accent-rose-deep" />
+        <span>
+          <b>Publicar stock en Wix</b>
+          <span className="block text-xs text-soft">
+            Destildalo en los productos MAYORISTA u ocultos que se usan solo como referencia interna: no se les manda stock.
+          </span>
+        </span>
+      </label>
       <div>
         <label className={label}>Por cada unidad vendida en Wix, descuenta *</label>
         <LineasEquivalencia

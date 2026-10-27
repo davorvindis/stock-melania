@@ -61,6 +61,8 @@ export async function guardarEquivalencia(formData: FormData) {
     p_actor: user.alias,
   });
   if (error) volverConError(back, error.message);
+  // los MAYORISTA (marcadores internos de Wix) no reciben stock
+  await db().from("channel_skus").update({ publish_stock: formData.get("publicar") === "si" }).eq("id", data as string);
   volverOk(id ? `/equivalencias/${id}` : `/equivalencias?q=${encodeURIComponent(d.sku)}`, id ? "Equivalencia actualizada" : `Equivalencia ${d.sku} creada`);
   return data;
 }

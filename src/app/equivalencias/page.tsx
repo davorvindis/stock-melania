@@ -129,6 +129,7 @@ export default async function EquivalenciasPage({ searchParams }: { searchParams
                     {e.label ?? "—"}
                     {e.option_label ? <span className="text-soft"> · {e.option_label}</span> : null}
                     {!e.active && <span className="ml-2 rounded-full bg-stone-200 px-2 py-0.5 text-xs text-stone-700">Desactivada</span>}
+                    {e.active && !e.publish_stock && <span className="ml-2 rounded-full bg-blush-100 px-2 py-0.5 text-xs text-soft">No publica stock</span>}
                   </td>
                   <td className={td}>
                     <ul className="space-y-0.5">

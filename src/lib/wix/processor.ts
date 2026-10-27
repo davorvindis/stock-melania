@@ -83,6 +83,9 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
 
   // reservar es idempotente: agrega solo lo nuevo (ej. equivalencia cargada después)
   let res = await rpcTexto("wix_reserve_order", { p_order_id: orderId, p_actor: ACTOR });
+  // etiqueta "Mayorista" en Wix → lo reservado sale como venta mayorista
+  const tipo = await rpcTexto("wix_apply_order_tags", { p_order_id: orderId, p_actor: ACTOR });
+  if (tipo !== "sin-cambios") res += `+${tipo}`;
   if (n.payment_status === "PARTIALLY_REFUNDED") {
     await cli.rpc("_wix_append_review", { p_order: orderId, p_text: "Reembolso parcial en Wix: revisar qué se devuelve" });
   }
@@ -335,7 +338,8 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
   let eqq = cli
     .from("channel_skus")
     .select("id, external_sku, active, wix_product_id, wix_variant_id, wix_inventory_item_id, wix_tracked, lines:channel_sku_lines(product_id, quantity)")
-    .eq("active", true);
+    .eq("active", true)
+    .eq("publish_stock", true); // los MAYORISTA (marcadores internos) no reciben stock
   if (!todo) {
     const ids = await cli.from("channel_sku_lines").select("channel_sku_id").in("product_id", productos);
     if (ids.error) throw new Error(ids.error.message);
@@ -456,7 +460,8 @@ export async function conciliarInventario(actor = ACTOR): Promise<{ revisados: n
   const eqs = await cli
     .from("channel_skus")
     .select("id, external_sku, active, wix_product_id, wix_variant_id, wix_inventory_item_id, wix_tracked, lines:channel_sku_lines(product_id, quantity)")
-    .eq("active", true);
+    .eq("active", true)
+    .eq("publish_stock", true); // los MAYORISTA (marcadores internos) no reciben stock
   if (eqs.error) throw new Error(eqs.error.message);
   const lista = (eqs.data ?? []) as unknown as Eq[];
   const disp = new Map<string, number>();

@@ -9,6 +9,7 @@ export type Equivalencia = {
   label: string | null;
   option_label: string | null;
   active: boolean;
+  publish_stock: boolean;
   notes: string | null;
   updated_by: string | null;
   updated_at: string;
@@ -16,7 +17,7 @@ export type Equivalencia = {
 };
 
 const SELECT =
-  "id, channel, external_sku, label, option_label, active, notes, updated_by, updated_at, lines:channel_sku_lines(id, quantity, product:products(id, sku, name, unit, type, active))";
+  "id, channel, external_sku, label, option_label, active, publish_stock, notes, updated_by, updated_at, lines:channel_sku_lines(id, quantity, product:products(id, sku, name, unit, type, active))";
 
 export async function getEquivalencias(): Promise<Equivalencia[]> {
   const { data, error } = await db().from("channel_skus").select(SELECT).order("external_sku");
