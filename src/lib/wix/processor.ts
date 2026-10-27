@@ -122,15 +122,24 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   if (n.payment_status === "PARTIALLY_REFUNDED") {
     await cli.rpc("_wix_append_review", { p_order: orderId, p_text: "Reembolso parcial en Wix: revisar qué se devuelve" });
   }
+  const after = await cli.from("channel_orders").select("state").eq("id", orderId).single();
+  const st = after.data?.state;
+  const porArmar = st === "RESERVED" || st === "PARTIAL";
   if (n.fulfillment_status === "FULFILLED" && !row.data.wix_fulfilled) {
-    const after = await cli.from("channel_orders").select("state").eq("id", orderId).single();
-    const st = after.data?.state;
-    if (st === "RESERVED" || st === "PARTIAL") {
+    // Wix da por procesados solos los pedidos manuales sin método de envío (desde que se crean):
+    // no lo hizo nadie, así que no se avisa; al procesarlo en Melania no se crea otro envío
+    const autoWix = n.channel_type === "BACKOFFICE_MERCHANT" && !o.shippingInfo;
+    if (porArmar && !autoWix) {
       await cli.rpc("wix_mark_fulfilled_externally", { p_order_id: orderId, p_actor: ACTOR });
       res += "+fulfilled-externally";
     } else {
       await cli.from("channel_orders").update({ wix_fulfilled: true }).eq("id", orderId);
+      if (autoWix) res += "+auto-procesado-wix";
     }
+  } else if (n.fulfillment_status !== "FULFILLED" && row.data.wix_fulfilled && porArmar) {
+    // lo volvieron a "no procesado" en Wix: al procesarlo en Melania se crea el envío
+    await cli.rpc("wix_unmark_fulfilled", { p_order_id: orderId, p_actor: ACTOR });
+    res += "+desmarcado-en-wix";
   }
   return res;
 }

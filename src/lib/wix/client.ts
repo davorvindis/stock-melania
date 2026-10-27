@@ -71,6 +71,7 @@ export type WixOrder = {
   billingInfo?: { contactDetails?: { firstName?: string; lastName?: string; company?: string } };
   recipientInfo?: { contactDetails?: { firstName?: string; lastName?: string; company?: string } };
   priceSummary?: { total?: { amount?: string } };
+  shippingInfo?: { title?: string } | null; // método de entrega; los pedidos manuales pueden no tenerlo
   lineItems?: {
     id: string;
     quantity: number;
