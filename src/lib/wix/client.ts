@@ -78,7 +78,7 @@ export type WixOrder = {
     productName?: { original?: string; translated?: string };
     itemType?: { preset?: string; custom?: string };
     physicalProperties?: { sku?: string };
-    catalogReference?: { catalogItemId?: string; options?: { variantId?: string } };
+    catalogReference?: { catalogItemId?: string; appId?: string; options?: { variantId?: string } };
     price?: { amount?: string };
   }[];
 };
@@ -100,6 +100,15 @@ export type PedidoNormalizado = {
   items: { line_id: string; sku: string | null; name: string | null; quantity: number; unit_price: number | null }[];
 };
 
+// servicios (turnos de Wix Bookings): no son productos, no mueven stock
+const APP_BOOKINGS = "13d21c63-b5ec-5912-8397-c3a5ddb27a97";
+export function esServicio(li: NonNullable<WixOrder["lineItems"]>[number]): boolean {
+  return li.itemType?.preset === "SERVICE" || li.catalogReference?.appId === APP_BOOKINGS;
+}
+export function soloServicios(o: WixOrder): boolean {
+  return (o.lineItems ?? []).length > 0 && (o.lineItems ?? []).every(esServicio);
+}
+
 export function normalizarPedido(o: WixOrder): PedidoNormalizado {
   const c = o.billingInfo?.contactDetails ?? o.recipientInfo?.contactDetails;
   const nombre = [c?.firstName, c?.lastName].filter(Boolean).join(" ") || c?.company || null;
@@ -117,7 +126,7 @@ export function normalizarPedido(o: WixOrder): PedidoNormalizado {
     ordered_at: o.createdDate ?? null,
     updated_at: o.updatedDate ?? null,
     raw: o,
-    items: (o.lineItems ?? []).map((li) => ({
+    items: (o.lineItems ?? []).filter((li) => !esServicio(li)).map((li) => ({
       line_id: li.id,
       sku: li.physicalProperties?.sku?.trim() || null,
       name: li.productName?.original ?? li.productName?.translated ?? null,

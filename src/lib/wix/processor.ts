@@ -11,6 +11,7 @@ import {
   listFulfillments,
   normalizarPedido,
   searchOrdersDesde,
+  soloServicios,
   updateFulfillmentTracking,
   wixConfigurado,
   type PedidoNormalizado,
@@ -57,6 +58,8 @@ const ACTOR = "wix";
 export async function reconciliarPedido(o: WixOrder): Promise<string> {
   const settings = await getWixSettings();
   if (!settings.enabled) throw new Error("La integración con Wix está desconectada: no se aplican cambios");
+  // reservas de servicios (Bookings): no se traen, solo interesan las ventas de productos
+  if (soloServicios(o)) return "ignorado:solo-servicios";
   const n: PedidoNormalizado = normalizarPedido(o);
   const cli = db();
   // ya despachado / retirado: lo que había antes de esta lectura, para detectar ediciones en Wix
