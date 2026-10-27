@@ -92,6 +92,22 @@ export async function procesarPedido(formData: FormData) {
   volverOk(back, msg);
 }
 
+// ── Pedidos: despachado (correo, moto, se llevó) / retirado por el local ──
+// no mueve stock (ya salió al procesar); "deshacer" solo Yura, Mel, Joel
+export async function marcarEntregaPedido(formData: FormData) {
+  const user = await requireSection("pedidos");
+  const id = uuid.safeParse(String(formData.get("id") ?? ""));
+  if (!id.success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id.data}`;
+  const raw = String(formData.get("entrega") ?? "");
+  const estado = raw === "DISPATCHED" || raw === "PICKED_UP" ? raw : raw === "deshacer" ? null : undefined;
+  if (estado === undefined) volverConError(back, "Estado de entrega inválido");
+  if (estado === null && user.role !== "ADMIN" && user.role !== "MANAGER") volverConError(back, "Solo Yura, Mel o Joel pueden deshacerlo");
+  const { error } = await db().rpc("wix_mark_delivered", { p_order_id: id.data, p_status: estado, p_actor: user.alias });
+  if (error) volverConError(back, error.message);
+  volverOk(back, estado === "PICKED_UP" ? "Marcado como retirado" : estado === "DISPATCHED" ? "Marcado como despachado" : "Listo: vuelve a Procesado");
+}
+
 // volver a leer el pedido en Wix y aplicar las reglas
 export async function actualizarPedidoDesdeWix(formData: FormData) {
   await requireSection("pedidos");

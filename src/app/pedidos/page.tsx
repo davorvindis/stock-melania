@@ -15,6 +15,8 @@ const ESTADOS: [string, string][] = [
   ["pendientes", "Para armar"],
   ["todos", "Todos"],
   ["PROCESSED", "Procesados"],
+  ["DISPATCHED", "Despachados"],
+  ["PICKED_UP", "Retirados"],
   ["RELEASED", "Liberados"],
   ["CANCELED", "Cancelados"],
   ["NEW", "Sin pagar"],
@@ -63,8 +65,9 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
       </div>
       <Flash ok={sp.ok} error={sp.error} />
       <p className="mb-4 max-w-3xl text-sm text-soft">
-        Los pedidos pagados en la tienda web quedan <b>reservados</b> en Depósito. Cuando armás y despachás uno, entrá y marcalo
-        como procesado: ahí sale del stock con tu usuario como responsable y Wix lo marca procesado solo. Las ventas del local
+        Los pedidos pagados en la tienda web quedan <b>reservados</b> en Depósito. Cuando armás uno, entrá y marcalo como
+        procesado: ahí sale del stock con tu usuario como responsable y Wix lo marca procesado solo. Cuando sale del local,
+        marcalo como <b>despachado</b> (correo, moto) o <b>retirado</b> (lo buscó la clienta). Las ventas del local
         (POS) se descuentan del Store al instante. Melania revisa Wix sola cada 5 minutos; si no ves un pedido, tocá{" "}
         <b>Actualizar ahora</b>.
       </p>
@@ -126,6 +129,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               {canal(p)} · {p.ordered_at ? fmtDateTime(p.ordered_at) : "—"} · {fmtMoney(p.total)}
             </div>
             {p.processed_by && <div className="text-xs text-soft">Procesó: {p.processed_by}</div>}
+            {p.delivered_by && <div className="text-xs text-soft">{p.delivery_status === "PICKED_UP" ? "Entregó" : "Despachó"}: {p.delivered_by}</div>}
             {demorado(p) && <div className="text-xs font-medium text-red-700">Pagado hace más de 3 días sin procesar</div>}
             {p.review_reason && <div className="text-xs font-medium text-amber-800">⚠ {p.review_reason}</div>}
           </Link>
@@ -168,7 +172,10 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                     {badgeEstado(p)}
                     {demorado(p) && <div className="text-xs font-medium text-red-700">+3 días sin procesar</div>}
                   </td>
-                  <td className={td}>{p.processed_by ?? ""}</td>
+                  <td className={td}>
+                    {p.processed_by ?? ""}
+                    {p.delivered_by && <div className="text-xs text-soft">{p.delivery_status === "PICKED_UP" ? "Entregó" : "Despachó"}: {p.delivered_by}</div>}
+                  </td>
                   <td className={`${td} max-w-xs text-xs text-amber-800`}>{p.review_reason ?? ""}</td>
                 </tr>
               ))}

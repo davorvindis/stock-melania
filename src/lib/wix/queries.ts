@@ -23,6 +23,9 @@ export type PedidoWix = {
   wholesale: boolean;
   envio_titulo: string | null; // método de entrega elegido en Wix (shippingInfo.title)
   wix_fulfilled: boolean;
+  delivery_status: "DISPATCHED" | "PICKED_UP" | null; // después de procesado: salió del local
+  delivered_at: string | null;
+  delivered_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -61,11 +64,18 @@ export const ESTADOS_PEDIDO: Record<PedidoWix["state"], string> = {
   IGNORED: "Ignorado",
 };
 
-const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
+export const ESTADOS_ENTREGA: Record<"DISPATCHED" | "PICKED_UP", string> = {
+  DISPATCHED: "Despachado",
+  PICKED_UP: "Retirado",
+};
+
+const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, delivery_status, delivered_at, delivered_by, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
 
 export async function getPedidosWix(f: { estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: boolean; limite?: number }): Promise<PedidoWix[]> {
   let q = db().from("channel_orders").select(SELECT).order("ordered_at", { ascending: false, nullsFirst: false }).limit(f.limite ?? 300);
   if (f.estado === "pendientes") q = q.in("state", ["RESERVED", "PARTIAL"]);
+  else if (f.estado === "PROCESSED") q = q.eq("state", "PROCESSED").is("delivery_status", null); // armado, falta que salga
+  else if (f.estado === "DISPATCHED" || f.estado === "PICKED_UP") q = q.eq("delivery_status", f.estado);
   else if (f.estado) q = q.eq("state", f.estado);
   if (f.canal === "POS") q = q.eq("channel_type", "POS");
   else if (f.canal === "WEB") q = q.neq("channel_type", "POS");

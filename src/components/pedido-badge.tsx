@@ -1,6 +1,10 @@
-import { ESTADOS_PEDIDO, type PedidoWix } from "@/lib/wix/queries";
+import { ESTADOS_ENTREGA, ESTADOS_PEDIDO, type PedidoWix } from "@/lib/wix/queries";
 
 export function badgeEstado(p: PedidoWix) {
+  if (p.state === "PROCESSED" && p.delivery_status) {
+    const c = p.delivery_status === "PICKED_UP" ? "bg-violet-100 text-violet-800" : "bg-sky-100 text-sky-800";
+    return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${c}`}>{ESTADOS_ENTREGA[p.delivery_status]}</span>;
+  }
   const color =
     p.state === "RESERVED" || p.state === "PARTIAL"
       ? "bg-amber-100 text-amber-800"

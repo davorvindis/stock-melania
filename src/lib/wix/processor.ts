@@ -57,6 +57,14 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   if (!settings.enabled) throw new Error("La integración con Wix está desconectada: no se aplican cambios");
   const n: PedidoNormalizado = normalizarPedido(o);
   const cli = db();
+  // ya despachado / retirado: lo que había antes de esta lectura, para detectar ediciones en Wix
+  const previo = await cli
+    .from("channel_orders")
+    .select("delivery_status, items:channel_order_items(external_line_id, quantity)")
+    .eq("channel", "WIX")
+    .eq("external_id", n.external_id)
+    .maybeSingle();
+  if (previo.error) throw new Error(previo.error.message);
   const up = await cli.rpc("wix_upsert_order", { p_order: n });
   if (up.error) throw new Error(`upsert: ${up.error.message}`);
   const orderId = up.data as string;
@@ -79,6 +87,19 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   }
 
   if (cancelado) return rpcTexto("wix_release_order", { p_order_id: orderId, p_reason: motivo(n), p_actor: ACTOR });
+  // el paquete ya salió (despachado / retirado): no se rearma ni se toca el stock, solo se avisa si cambió
+  const entrega = previo.data?.delivery_status as string | null | undefined;
+  if (entrega) {
+    const antes = new Map((previo.data?.items ?? []).map((i) => [i.external_line_id, Number(i.quantity)]));
+    const cambio = antes.size !== n.items.length || n.items.some((i) => antes.get(i.line_id) !== Number(i.quantity));
+    const que = entrega === "PICKED_UP" ? "retirado" : "despachado";
+    if (cambio) await cli.rpc("_wix_append_review", { p_order: orderId, p_text: `Editado en Wix después de ${que}: el paquete ya salió, revisar qué hacer con la diferencia` });
+    if (n.payment_status === "PARTIALLY_REFUNDED") {
+      await cli.rpc("_wix_append_review", { p_order: orderId, p_text: "Reembolso parcial en Wix: revisar qué se devuelve" });
+    }
+    if (n.fulfillment_status === "FULFILLED" && !row.data.wix_fulfilled) await cli.from("channel_orders").update({ wix_fulfilled: true }).eq("id", orderId);
+    return `ya-${que}${cambio ? "+editado" : ""}`;
+  }
   // pedido editado en Wix: antes de despachar la reserva sigue a Wix (cantidades, productos sacados);
   // ya despachado no se toca (lo agregado va en un pedido nuevo)
   const ed = await cli.rpc("wix_sync_order_items", { p_order_id: orderId, p_actor: ACTOR });

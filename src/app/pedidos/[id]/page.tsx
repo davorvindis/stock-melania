@@ -4,11 +4,11 @@ import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
 import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem } from "@/lib/wix/queries";
 import { getWixSettings } from "@/lib/wix/processor";
-import { actualizarPedidoDesdeWix, marcarPedidoRevisado, procesarPedido } from "@/lib/wix/actions";
+import { actualizarPedidoDesdeWix, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido } from "@/lib/wix/actions";
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { badgeEntrega, badgeEstado, demorado } from "@/components/pedido-badge";
+import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   // editado en Wix después de armar: unidades que hay que sacar del paquete (vuelven al stock al rearmar)
   const aSacar = items.flatMap((i) => i.reservations.filter((rv) => Number(rv.to_return) > 0).map((rv) => ({ item: i, rv })));
   const puedeProcesar = (p.state === "RESERVED" || p.state === "PARTIAL") && (pendientes.length > 0 || aSacar.length > 0);
+  // armado y listo: falta que salga (despacho o retiro por el local); el botón principal sigue el método de Wix
+  const puedeEntregar = p.state === "PROCESSED" && p.channel_type !== "POS" && !p.delivery_status && aSacar.length === 0;
+  const esRetiro = metodoEntrega(p).clave === "RETIRO";
   const siteId = process.env.WIX_SITE_ID;
   const canal = p.channel_type === "POS" ? "Local (POS)" : p.channel_type === "BACKOFFICE_MERCHANT" ? "Manual en Wix" : "Tienda web";
   const porItem = new Map<string, typeof fulfillments>();
@@ -107,6 +110,12 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
             <dt className="text-soft">En Wix</dt><dd>{p.wix_status ?? "—"} · pago {p.payment_status ?? "—"} · {p.fulfillment_status ?? "—"}</dd>
             <dt className="text-soft">Pagado</dt><dd>{p.paid_at ? fmtDateTime(p.paid_at) : "—"}</dd>
             <dt className="text-soft">Procesado</dt><dd>{p.processed_at ? `${fmtDateTime(p.processed_at)} por ${p.processed_by}` : "—"}</dd>
+            {p.delivered_at && (
+              <>
+                <dt className="text-soft">{p.delivery_status === "PICKED_UP" ? "Retirado" : "Despachado"}</dt>
+                <dd>{fmtDateTime(p.delivered_at)} por {p.delivered_by}</dd>
+              </>
+            )}
             <dt className="text-soft">Wix</dt>
             <dd>
               {siteId ? (
@@ -125,6 +134,43 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
         </Card>
       </div>
 
+      {puedeEntregar && (
+        <Card className="mt-3 border-emerald-200 bg-emerald-50">
+          <p className="text-sm">
+            <b className="text-emerald-900">Armado y listo.</b> Cuando salga del local, marcalo:
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(esRetiro ? (["PICKED_UP", "DISPATCHED"] as const) : (["DISPATCHED", "PICKED_UP"] as const)).map((e, i) => (
+              <form key={e} action={marcarEntregaPedido}>
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="entrega" value={e} />
+                <SubmitButton
+                  className={
+                    i === 0
+                      ? "rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper"
+                      : "rounded-lg border border-line bg-white px-4 py-2.5 text-sm font-medium hover:bg-blush-50"
+                  }
+                >
+                  {e === "DISPATCHED" ? "🚚 Marcar como despachado" : "🏬 Marcar como retirado"}
+                </SubmitButton>
+              </form>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-soft">
+            Despachado: salió por Correo Argentino, moto o se llevó a algún lugar. Retirado: la clienta lo pasó a buscar por el local.
+          </p>
+        </Card>
+      )}
+      {p.delivery_status && puedeRevisar && (
+        <form action={marcarEntregaPedido} className="mt-2">
+          <input type="hidden" name="id" value={p.id} />
+          <input type="hidden" name="entrega" value="deshacer" />
+          <SubmitButton className="text-xs text-soft underline hover:text-ink">
+            Deshacer {p.delivery_status === "PICKED_UP" ? "retirado" : "despachado"} (marcado por error)
+          </SubmitButton>
+        </form>
+      )}
+
       <form action={procesarPedido}>
         <input type="hidden" name="id" value={p.id} />
         <input type="hidden" name="batch" value={randomUUID()} />
@@ -140,7 +186,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                   <th className={th}>Descuenta</th>
                   <th className={th}>Disponible</th>
                   <th className={th}>Estado</th>
-                  {puedeProcesar && <th className={th}>Despacho ahora</th>}
+                  {puedeProcesar && <th className={th}>Armo ahora</th>}
                 </tr>
               </thead>
               <tbody>
@@ -221,10 +267,11 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           {puedeProcesar && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <SubmitButton className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
-                Marcar como procesado y despachado
+                Marcar como procesado (armado)
               </SubmitButton>
               <span className="text-xs text-soft">
-                Queda registrado con tu usuario. Si despachás solo una parte, bajá las cantidades: el resto sigue reservado.
+                Sale del stock con tu usuario. Si armás solo una parte, bajá las cantidades: el resto sigue reservado. Después lo
+                marcás como despachado o retirado.
               </span>
             </div>
           )}
