@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
 import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem } from "@/lib/wix/queries";
 import { getWixSettings } from "@/lib/wix/processor";
-import { actualizarPedidoDesdeWix, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido } from "@/lib/wix/actions";
+import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido } from "@/lib/wix/actions";
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -30,6 +30,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   // armado y listo: falta que salga (despacho o retiro por el local); el botón principal sigue el método de Wix
   const puedeEntregar = p.state === "PROCESSED" && p.channel_type !== "POS" && !p.delivery_status && aSacar.length === 0;
   const esRetiro = metodoEntrega(p).clave === "RETIRO";
+  // seguimiento de Correo Argentino: no aplica a moto, retiro ni ventas del local
+  const llevaSeguimiento = p.channel_type !== "POS" && !["MOTO", "RETIRO"].includes(metodoEntrega(p).clave);
+  const puedeSeguimiento = p.channel_type !== "POS" && (p.state === "PROCESSED" || p.state === "PARTIAL") && (llevaSeguimiento || !!p.tracking_number);
   const siteId = process.env.WIX_SITE_ID;
   const canal = p.channel_type === "POS" ? "Local (POS)" : p.channel_type === "BACKOFFICE_MERCHANT" ? "Manual en Wix" : "Tienda web";
   const porItem = new Map<string, typeof fulfillments>();
@@ -110,6 +113,36 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
             <dt className="text-soft">En Wix</dt><dd>{p.wix_status ?? "—"} · pago {p.payment_status ?? "—"} · {p.fulfillment_status ?? "—"}</dd>
             <dt className="text-soft">Pagado</dt><dd>{p.paid_at ? fmtDateTime(p.paid_at) : "—"}</dd>
             <dt className="text-soft">Procesado</dt><dd>{p.processed_at ? `${fmtDateTime(p.processed_at)} por ${p.processed_by}` : "—"}</dd>
+            {(p.tracking_number || puedeSeguimiento) && (
+              <>
+                <dt className="text-soft">Seguimiento</dt>
+                <dd>
+                  {p.tracking_number ? (
+                    <>
+                      <span className="font-mono">{p.tracking_number}</span>
+                      {p.tracking_synced ? (
+                        <span className="ml-2 text-xs text-emerald-700">✓ en Wix</span>
+                      ) : (
+                        <span className="ml-2 text-xs text-amber-700" title={p.tracking_error ?? ""}>
+                          pendiente de mandar a Wix{p.tracking_error ? `: ${p.tracking_error}` : ""}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-soft">—</span>
+                  )}
+                  {puedeSeguimiento && (
+                    <form action={guardarSeguimiento} className="mt-1 flex flex-wrap gap-2">
+                      <input type="hidden" name="id" value={p.id} />
+                      <input name="seguimiento" required maxLength={100} placeholder="N° de Correo Argentino" defaultValue={p.tracking_number ?? ""} className="min-w-[12rem] flex-1 rounded-lg border border-line bg-white px-2 py-1 font-mono text-xs" />
+                      <SubmitButton className="rounded-lg border border-line px-3 py-1 text-xs font-medium hover:bg-blush-50">
+                        {p.tracking_number ? "Cambiar" : "Cargar"}
+                      </SubmitButton>
+                    </form>
+                  )}
+                </dd>
+              </>
+            )}
             {p.delivered_at && (
               <>
                 <dt className="text-soft">{p.delivery_status === "PICKED_UP" ? "Retirado" : "Despachado"}</dt>
@@ -263,6 +296,14 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
               </ul>
               <p className="mt-1 text-xs text-red-800">Al marcar como procesado, esas unidades vuelven al stock del Depósito.</p>
             </div>
+          )}
+          {puedeProcesar && llevaSeguimiento && (
+            <label className="mt-4 block max-w-md text-sm">
+              <span className="font-medium">N° de seguimiento de Correo Argentino</span>
+              <span className="ml-1 text-xs text-soft">(opcional, si ya lo tenés)</span>
+              <input name="seguimiento" maxLength={100} defaultValue={p.tracking_number ?? ""} placeholder="ej. 00009056322A888LI42C901" className={`${input} mt-1 font-mono`} />
+              <span className="mt-1 block text-xs text-soft">Se manda a Wix al procesar y a la clienta le llega el email con el número. Si no lo tenés, lo cargás después en este pedido.</span>
+            </label>
           )}
           {puedeProcesar && (
             <div className="mt-4 flex flex-wrap items-center gap-3">

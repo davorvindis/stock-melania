@@ -21,6 +21,7 @@ import {
   reanudarPausados,
   reconciliarPedido,
   sincronizarFulfillments,
+  sincronizarSeguimientos,
 } from "./processor";
 
 function volverConError(path: string, msg: string): never {
@@ -66,6 +67,7 @@ export async function procesarPedido(formData: FormData) {
   }
   // si solo hay que sacar cosas del paquete (pedido editado en Wix), se procesa sin cantidades nuevas
   if (lineas.length === 0 && formData.get("devoluciones") !== "1") volverConError(back, "Indicá qué cantidades estás despachando");
+  const seguimiento = String(formData.get("seguimiento") ?? "").trim();
   const batchRaw = String(formData.get("batch") ?? "");
   const batch = uuid.safeParse(batchRaw).success ? batchRaw : null; // evita doble envío del mismo formulario
   const { data, error } = await db().rpc("wix_process_order", {
@@ -76,11 +78,18 @@ export async function procesarPedido(formData: FormData) {
     p_batch: batch,
   });
   if (error) volverConError(back, error.message);
+  // el seguimiento se guarda antes de avisar a Wix, así viaja con el envío
+  if (seguimiento) {
+    const t = await db().rpc("wix_set_tracking", { p_order_id: id, p_number: seguimiento, p_actor: user.alias });
+    if (t.error) volverConError(back, `Stock descontado, pero el seguimiento no se guardó: ${t.error.message}`);
+  }
   const r = data as { batch_id: string; repeated?: boolean; lines?: unknown[]; devueltos?: unknown[] };
   if (r.repeated) volverOk(back, "Ese despacho ya estaba registrado (no se descontó dos veces).");
   // avisar a Wix (si falla o está desconectado, el stock ya salió: queda pendiente y lo reintenta el cron)
   const settings = await getWixSettings();
   const ful = settings.enabled ? await sincronizarFulfillments(r.batch_id) : { ok: 0, errores: 0 };
+  // envío sin líneas nuevas (solo rearmado): el seguimiento va al envío que ya existe
+  if (seguimiento && settings.enabled) await sincronizarSeguimientos(id).catch(() => {});
   after(() => publicarInventario().catch(() => {}));
   const msg = !settings.enabled
     ? "Stock descontado. La integración está desconectada: Wix no se marcó (se hará al reconectar)."
@@ -88,7 +97,7 @@ export async function procesarPedido(formData: FormData) {
       ? "Stock descontado. No se pudo marcar en Wix todavía (se reintenta solo)."
       : (r.lines?.length ?? 0) === 0
         ? "Pedido rearmado: lo sacado del paquete volvió al stock del Depósito."
-        : `Pedido procesado: stock descontado y marcado como procesado en Wix.${r.devueltos?.length ? " Lo sacado del paquete volvió al stock." : ""}`;
+        : `Pedido procesado: stock descontado y marcado como procesado en Wix${seguimiento ? " con el seguimiento" : ""}.${r.devueltos?.length ? " Lo sacado del paquete volvió al stock." : ""}`;
   volverOk(back, msg);
 }
 
@@ -106,6 +115,21 @@ export async function marcarEntregaPedido(formData: FormData) {
   const { error } = await db().rpc("wix_mark_delivered", { p_order_id: id.data, p_status: estado, p_actor: user.alias });
   if (error) volverConError(back, error.message);
   volverOk(back, estado === "PICKED_UP" ? "Marcado como retirado" : estado === "DISPATCHED" ? "Marcado como despachado" : "Listo: vuelve a Procesado");
+}
+
+// ── Pedidos: cargar o cambiar el N° de seguimiento (Correo Argentino) ──
+export async function guardarSeguimiento(formData: FormData) {
+  const user = await requireSection("pedidos");
+  const id = uuid.safeParse(String(formData.get("id") ?? ""));
+  if (!id.success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id.data}`;
+  const { data, error } = await db().rpc("wix_set_tracking", { p_order_id: id.data, p_number: String(formData.get("seguimiento") ?? ""), p_actor: user.alias });
+  if (error) volverConError(back, error.message);
+  if (data === "sin-cambios") volverOk(back, "Ese seguimiento ya estaba cargado");
+  const settings = await getWixSettings();
+  if (!settings.enabled) volverOk(back, "Seguimiento guardado. La integración está desconectada: se manda a Wix al reconectar.");
+  const r = await sincronizarSeguimientos(id.data).catch(() => ({ ok: 0, errores: 1 }));
+  volverOk(back, r.errores > 0 ? "Seguimiento guardado, pero Wix no lo tomó todavía (se reintenta solo)." : "Seguimiento cargado en Wix: la clienta recibe el email con el número.");
 }
 
 // volver a leer el pedido en Wix y aplicar las reglas

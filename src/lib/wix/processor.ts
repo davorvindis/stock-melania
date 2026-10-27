@@ -8,8 +8,10 @@ import {
   getOrder,
   listarSkusV1,
   listarSkusV3,
+  listFulfillments,
   normalizarPedido,
   searchOrdersDesde,
+  updateFulfillmentTracking,
   wixConfigurado,
   type PedidoNormalizado,
   type WixOrder,
@@ -274,7 +276,7 @@ export async function sincronizarFulfillments(batchId?: string): Promise<{ ok: n
   const cli = db();
   let q = cli
     .from("channel_order_fulfillments")
-    .select("id, order_id, quantity, wix_attempts, item:channel_order_items(external_line_id), order:channel_orders(external_id, number, wix_fulfilled, fulfillment_status)")
+    .select("id, order_id, quantity, wix_attempts, item:channel_order_items(external_line_id), order:channel_orders(external_id, number, wix_fulfilled, fulfillment_status, tracking_number)")
     .eq("wix_synced", false)
     .lt("wix_attempts", 5);
   if (batchId) q = q.eq("batch_id", batchId);
@@ -286,7 +288,7 @@ export async function sincronizarFulfillments(batchId?: string): Promise<{ ok: n
     quantity: number;
     wix_attempts: number;
     item: { external_line_id: string } | null;
-    order: { external_id: string; number: string | null; wix_fulfilled: boolean; fulfillment_status: string | null } | null;
+    order: { external_id: string; number: string | null; wix_fulfilled: boolean; fulfillment_status: string | null; tracking_number: string | null } | null;
   };
   const filas = (data ?? []) as unknown as Row[];
   // una llamada por pedido con todas sus líneas pendientes
@@ -315,13 +317,53 @@ export async function sincronizarFulfillments(batchId?: string): Promise<{ ok: n
     }
     try {
       if (!wixConfigurado()) throw new Error("Wix no configurado");
-      await createFulfillment(ext, [...lineas].map(([id, quantity]) => ({ id, quantity })));
+      const seg = grupo[0].order?.tracking_number ?? null;
+      await createFulfillment(ext, [...lineas].map(([id, quantity]) => ({ id, quantity })), seg);
       await cli.from("channel_order_fulfillments").update({ wix_synced: true, wix_error: null }).in("id", grupo.map((f) => f.id));
+      // el seguimiento ya viajó con el envío
+      if (seg) await cli.from("channel_orders").update({ tracking_synced: true, tracking_error: null }).eq("id", grupo[0].order_id).eq("tracking_number", seg);
       ok += grupo.length;
     } catch (e) {
       const msg = (e as Error).message;
       for (const f of grupo) await cli.from("channel_order_fulfillments").update({ wix_error: msg, wix_attempts: f.wix_attempts + 1 }).eq("id", f.id);
       errores += grupo.length;
+    }
+  }
+  return { ok, errores };
+}
+
+// ── Seguimiento (Correo Argentino) cargado después de procesar ──────
+// se agrega al último envío que el pedido tiene en Wix; si todavía no hay envío
+// (fulfillment pendiente), viaja con él al crearlo
+export async function sincronizarSeguimientos(orderId?: string): Promise<{ ok: number; errores: number }> {
+  const s = await getWixSettings();
+  if (!s.enabled) return { ok: 0, errores: 0 };
+  const cli = db();
+  let q = cli
+    .from("channel_orders")
+    .select("id, external_id, tracking_number, tracking_attempts")
+    .eq("tracking_synced", false)
+    .not("tracking_number", "is", null)
+    .lt("tracking_attempts", 5);
+  if (orderId) q = q.eq("id", orderId);
+  const { data, error } = await q.limit(50);
+  if (error) throw new Error(error.message);
+  let ok = 0;
+  let errores = 0;
+  for (const o of data ?? []) {
+    const { count } = await cli.from("channel_order_fulfillments").select("id", { count: "exact", head: true }).eq("order_id", o.id).eq("wix_synced", false);
+    if ((count ?? 0) > 0) continue; // va con el envío pendiente
+    try {
+      if (!wixConfigurado()) throw new Error("Wix no configurado");
+      const envios = await listFulfillments(o.external_id);
+      const ultimo = [...envios].sort((a, b) => (b.createdDate ?? "").localeCompare(a.createdDate ?? ""))[0];
+      if (!ultimo) throw new Error("El pedido no tiene un envío creado en Wix (¿se marcó procesado a mano en Wix?)");
+      if (ultimo.trackingInfo?.trackingNumber !== o.tracking_number) await updateFulfillmentTracking(o.external_id, ultimo.id, o.tracking_number!);
+      await cli.from("channel_orders").update({ tracking_synced: true, tracking_error: null }).eq("id", o.id).eq("tracking_number", o.tracking_number!);
+      ok++;
+    } catch (e) {
+      await cli.from("channel_orders").update({ tracking_error: (e as Error).message, tracking_attempts: o.tracking_attempts + 1 }).eq("id", o.id);
+      errores++;
     }
   }
   return { ok, errores };
@@ -542,6 +584,7 @@ export async function corridaSync(): Promise<Record<string, unknown>> {
   const pend = await procesarPendientes();
   const poll = await sondearPedidos();
   const ful = await sincronizarFulfillments();
+  await sincronizarSeguimientos().catch(() => {});
   // una vez por día: conciliar antes de publicar, así lo que difiere sale en esta misma corrida
   let conciliacion: Record<string, unknown> | null = null;
   if (!s.last_reconcile_at || Date.now() - Date.parse(s.last_reconcile_at) > 86400_000) {

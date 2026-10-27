@@ -156,11 +156,33 @@ export async function searchOrdersDesde(desdeIso: string, maxPaginas = 20): Prom
   return out;
 }
 
-export async function createFulfillment(orderId: string, lineItems: { id: string; quantity: number }[]) {
+// seguimiento de Correo Argentino: no es un proveedor predefinido de Wix, el link se pasa a mano
+// (el formulario de seguimiento de envíos e-commerce del Correo)
+function trackingInfo(numero: string) {
+  return { trackingNumber: numero, shippingProvider: "Correo Argentino", trackingLink: "https://www.correoargentino.com.ar/formularios/e-commerce" };
+}
+
+export async function createFulfillment(orderId: string, lineItems: { id: string; quantity: number }[], seguimiento?: string | null) {
   return wixFetch<{ orderWithFulfillments?: unknown; fulfillmentId?: string }>(
     `/ecom/v1/fulfillments/orders/${orderId}/create-fulfillment`,
-    { body: { fulfillment: { lineItems } } }
+    { body: { fulfillment: seguimiento ? { lineItems, trackingInfo: trackingInfo(seguimiento) } : { lineItems } } }
   );
+}
+
+// envíos (fulfillments) ya creados en Wix para un pedido
+export async function listFulfillments(orderId: string) {
+  const r = await wixFetch<{ orderWithFulfillments?: { fulfillments?: { id: string; createdDate?: string; trackingInfo?: { trackingNumber?: string } }[] } }>(
+    `/ecom/v1/fulfillments/orders/${orderId}`
+  );
+  return r.orderWithFulfillments?.fulfillments ?? [];
+}
+
+// cargar o cambiar el seguimiento de un envío (Wix puede mandarle el email a la clienta, según su configuración)
+export async function updateFulfillmentTracking(orderId: string, fulfillmentId: string, seguimiento: string) {
+  return wixFetch(`/ecom/v1/fulfillments/${fulfillmentId}/orders/${orderId}`, {
+    method: "PATCH",
+    body: { fulfillment: { trackingInfo: trackingInfo(seguimiento) } },
+  });
 }
 
 // ── Catálogo e inventario ───────────────────────────────────────────
