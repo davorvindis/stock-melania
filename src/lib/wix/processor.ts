@@ -81,7 +81,15 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   const pagado = ["PAID", "PARTIALLY_REFUNDED"].includes(n.payment_status ?? "");
 
   if (n.channel_type === "POS") {
+    // reembolso de una venta ya descontada: en el pedido se indica si el producto volvió al Store
+    if (cancelado && row.data.state === "PROCESSED") {
+      await cli.rpc("_wix_append_review", { p_order: orderId, p_text: "Reembolsado en el POS: indicá si el producto volvió al Store" });
+      return "pos:reembolso-a-revisar";
+    }
     if (cancelado) return rpcTexto("wix_release_order", { p_order_id: orderId, p_reason: motivo(n), p_actor: ACTOR });
+    if (n.payment_status === "PARTIALLY_REFUNDED" && row.data.state === "PROCESSED") {
+      await cli.rpc("_wix_append_review", { p_order: orderId, p_text: "Reembolso parcial en el POS: si volvió algo al Store, revertilo en Movimientos" });
+    }
     // Wix crea el pedido POS con número 0 y lo numera segundos después: sin número
     // real no se descuenta (el motivo del movimiento es el N° de pedido); llega en el
     // evento siguiente (order_approved) o en el sondeo

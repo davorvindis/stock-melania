@@ -117,6 +117,21 @@ export async function marcarEntregaPedido(formData: FormData) {
   volverOk(back, estado === "PICKED_UP" ? "Marcado como retirado" : estado === "DISPATCHED" ? "Marcado como despachado" : "Listo: vuelve a Procesado");
 }
 
+// ── Pedidos: reembolso en el POS → ¿el producto volvió al Store? ──
+export async function resolverReembolsoPos(formData: FormData) {
+  const user = await requireSection("pedidos");
+  const id = uuid.safeParse(String(formData.get("id") ?? ""));
+  if (!id.success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id.data}`;
+  const raw = String(formData.get("volvio") ?? "");
+  if (raw !== "si" && raw !== "no") volverConError(back, "Indicá si el producto volvió al Store");
+  const { data, error } = await db().rpc("wix_pos_refund", { p_order_id: id.data, p_returned: raw === "si", p_actor: user.alias });
+  if (error) volverConError(back, error.message);
+  if (data === "sin-cambios") volverOk(back, "Ese reembolso ya estaba resuelto");
+  if (raw === "si") after(() => publicarInventario().catch(() => {}));
+  volverOk(back, raw === "si" ? "Listo: la venta se revirtió y el producto volvió al stock del Store" : "Listo: reembolso registrado, el stock no se tocó");
+}
+
 // ── Pedidos: cargar o cambiar el N° de seguimiento (Correo Argentino) ──
 export async function guardarSeguimiento(formData: FormData) {
   const user = await requireSection("pedidos");

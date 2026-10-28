@@ -1,6 +1,7 @@
 import { ESTADOS_ENTREGA, ESTADOS_PEDIDO, type PedidoWix } from "@/lib/wix/queries";
 
 export function badgeEstado(p: PedidoWix) {
+  if (p.refund_resolution) return <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">Reembolsado</span>;
   if (p.state === "PROCESSED" && p.delivery_status) {
     const c = p.delivery_status === "PICKED_UP" ? "bg-violet-100 text-violet-800" : "bg-sky-100 text-sky-800";
     return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${c}`}>{ESTADOS_ENTREGA[p.delivery_status]}</span>;

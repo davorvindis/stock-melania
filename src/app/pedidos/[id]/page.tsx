@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
 import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem } from "@/lib/wix/queries";
 import { getWixSettings } from "@/lib/wix/processor";
-import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido } from "@/lib/wix/actions";
+import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido, resolverReembolsoPos } from "@/lib/wix/actions";
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -30,6 +30,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   // armado y listo: falta que salga (despacho o retiro por el local); el botón principal sigue el método de Wix
   const puedeEntregar = p.state === "PROCESSED" && p.channel_type !== "POS" && !p.delivery_status && aSacar.length === 0;
   const esRetiro = metodoEntrega(p).clave === "RETIRO";
+  // reembolso en el POS de una venta ya descontada: lo resuelve quien está en el local
+  const reembolsoPos =
+    p.channel_type === "POS" && p.state === "PROCESSED" && !p.refund_resolution && (p.payment_status === "FULLY_REFUNDED" || p.wix_status === "CANCELED");
   // seguimiento de Correo Argentino: no aplica a moto, retiro ni ventas del local
   const llevaSeguimiento = p.channel_type !== "POS" && !["MOTO", "RETIRO"].includes(metodoEntrega(p).clave);
   const puedeSeguimiento = p.channel_type !== "POS" && (p.state === "PROCESSED" || p.state === "PARTIAL") && (llevaSeguimiento || !!p.tracking_number);
@@ -44,7 +47,31 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
       <Flash ok={sp.ok} error={sp.error} />
       <Link href="/pedidos" className="text-sm text-rose-deep hover:underline">← Pedidos</Link>
 
-      {p.review_reason && (
+      {reembolsoPos && (
+        <Card className="mt-3 border-amber-300 bg-amber-50">
+          <p className="text-sm"><b className="text-amber-900">⚠ Reembolsado en el POS.</b> ¿El producto volvió al Store?</p>
+          <p className="mt-1 text-xs text-amber-800">
+            Si volvió, la venta se revierte y el producto vuelve al stock del Store. Si no volvió (ej. estaba fallado y se tiró), el stock no se toca.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <form action={resolverReembolsoPos}>
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="volvio" value="si" />
+              <SubmitButton className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+                Volvió al Store
+              </SubmitButton>
+            </form>
+            <form action={resolverReembolsoPos}>
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="volvio" value="no" />
+              <SubmitButton className="rounded-lg border border-amber-400 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100">
+                No volvió
+              </SubmitButton>
+            </form>
+          </div>
+        </Card>
+      )}
+      {p.review_reason && !reembolsoPos && (
         <Card className="mt-3 border-amber-300 bg-amber-50">
           <p className="text-sm"><b className="text-amber-900">⚠ A revisar:</b> {p.review_reason}</p>
           {puedeRevisar ? (
@@ -113,6 +140,15 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
             <dt className="text-soft">En Wix</dt><dd>{p.wix_status ?? "—"} · pago {p.payment_status ?? "—"} · {p.fulfillment_status ?? "—"}</dd>
             <dt className="text-soft">Pagado</dt><dd>{p.paid_at ? fmtDateTime(p.paid_at) : "—"}</dd>
             <dt className="text-soft">Procesado</dt><dd>{p.processed_at ? `${fmtDateTime(p.processed_at)} por ${p.processed_by}` : "—"}</dd>
+            {p.refund_resolution && p.refund_resolved_at && (
+              <>
+                <dt className="text-soft">Reembolso</dt>
+                <dd>
+                  {p.refund_resolution === "RETURNED" ? "Volvió al Store" : "No volvió al Store"}
+                  <span className="text-soft"> · {fmtDateTime(p.refund_resolved_at)} por {p.refund_resolved_by}</span>
+                </dd>
+              </>
+            )}
             {(p.tracking_number || puedeSeguimiento) && (
               <>
                 <dt className="text-soft">Seguimiento</dt>
