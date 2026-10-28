@@ -24,6 +24,8 @@ export function demorado(p: PedidoWix): boolean {
 // método de entrega de Wix → grupo para armar (la moto pasa ~13 h, el correo hasta 18 h)
 export type Entrega = { clave: "MOTO" | "CORREO" | "RETIRO" | "OTRO" | "NINGUNA"; label: string; orden: number; color: string };
 export function metodoEntrega(p: PedidoWix): Entrega {
+  // venta del POS: se retira en el momento en el Store
+  if (p.channel_type === "POS") return { clave: "RETIRO", label: "🏬 Retiro en Store", orden: 3, color: "bg-emerald-100 text-emerald-800" };
   const t = (p.envio_titulo ?? "").toLowerCase();
   if (!t) return { clave: "NINGUNA", label: "—", orden: 9, color: "" };
   if (t.includes("moto")) return { clave: "MOTO", label: "🛵 Motomensajería", orden: 1, color: "bg-rose-100 text-rose-800" };

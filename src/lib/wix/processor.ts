@@ -87,7 +87,12 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
     // evento siguiente (order_approved) o en el sondeo
     if (!n.number || n.number === "0") return "pos:esperando-numero";
     // primera vez descuenta todo; en corridas siguientes solo reintenta ítems con error / sin equivalencia
-    if (n.wix_status === "APPROVED" || pagado) return rpcTexto("wix_pos_sale", { p_order_id: orderId, p_actor: ACTOR });
+    if (n.wix_status === "APPROVED" || pagado) {
+      const r = await rpcTexto("wix_pos_sale", { p_order_id: orderId, p_actor: ACTOR });
+      // venta de mostrador: se la llevó en el momento
+      await cli.rpc("wix_pos_mark_picked_up", { p_order_id: orderId });
+      return r;
+    }
     return "pos:esperando";
   }
 

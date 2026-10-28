@@ -78,7 +78,7 @@ export async function getPedidosWix(f: { estado?: string; canal?: string; q?: st
   let q = db().from("channel_orders").select(SELECT).order("ordered_at", { ascending: false, nullsFirst: false }).limit(f.limite ?? 300);
   if (f.estado === "pendientes") q = q.in("state", ["RESERVED", "PARTIAL"]);
   else if (f.estado === "PROCESSED") q = q.eq("state", "PROCESSED").is("delivery_status", null); // armado, falta que salga
-  else if (f.estado === "DISPATCHED" || f.estado === "PICKED_UP") q = q.eq("delivery_status", f.estado);
+  else if (f.estado === "DISPATCHED" || f.estado === "PICKED_UP") q = q.eq("state", "PROCESSED").eq("delivery_status", f.estado);
   else if (f.estado) q = q.eq("state", f.estado);
   if (f.canal === "POS") q = q.eq("channel_type", "POS");
   else if (f.canal === "WEB") q = q.neq("channel_type", "POS");
