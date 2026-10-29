@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
-import { contarSinDescontar, getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
+import { PEDIDOS_POR_PAGINA, contarSinDescontar, getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
 import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
 import { fmtDateTime, fmtMoney } from "@/lib/types";
 import { actualizarPedidosAhora } from "@/lib/wix/actions";
@@ -9,7 +9,7 @@ import { SubmitButton } from "@/components/submit-button";
 
 export const dynamic = "force-dynamic";
 
-type SP = { ok?: string; error?: string; estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: string; entrega?: string };
+type SP = { ok?: string; error?: string; estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: string; entrega?: string; pagina?: string };
 
 const ESTADOS: [string, string][] = [
   ["pendientes", "Para armar"],
@@ -27,7 +27,8 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   await requireSection("pedidos");
   const sp = await searchParams;
   const estado = sp.estado ?? "pendientes";
-  const [todos, sinDescontar] = await Promise.all([
+  const pagina = Math.max(1, Number.parseInt(sp.pagina ?? "1", 10) || 1);
+  const [{ pedidos, total, porEntrega }, sinDescontar] = await Promise.all([
     getPedidosWix({
       estado: estado === "todos" ? undefined : estado,
       canal: sp.canal,
@@ -35,19 +36,15 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
       desde: sp.desde,
       hasta: sp.hasta,
       revisar: sp.revisar === "si",
+      entrega: sp.entrega,
+      pagina,
     }),
     contarSinDescontar(),
   ]);
-  // por método de entrega; en "Para armar", primero lo que sale antes (moto ~13 h, correo hasta 18 h, retiro)
-  let pedidos = sp.entrega ? todos.filter((p) => metodoEntrega(p).clave === sp.entrega) : todos;
-  if (estado === "pendientes") {
-    pedidos = [...pedidos].sort(
-      (a, b) => metodoEntrega(a).orden - metodoEntrega(b).orden || (a.ordered_at ?? "").localeCompare(b.ordered_at ?? "")
-    );
-  }
+  const paginas = Math.max(1, Math.ceil(total / PEDIDOS_POR_PAGINA));
   const href = (patch: Partial<SP>) => {
     const p = new URLSearchParams();
-    const all = { ...sp, ...patch };
+    const all = { ...sp, pagina: undefined, ...patch };
     for (const [k, v] of Object.entries(all)) if (v && k !== "ok" && k !== "error") p.set(k, v);
     return p.toString() ? `/pedidos?${p}` : "/pedidos";
   };
@@ -106,13 +103,16 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         {[["", "Todas las entregas"], ["MOTO", "🛵 Motomensajería"], ["CORREO", "📦 Correo Argentino"], ["RETIRO", "🏬 Retiro en sucursal"]].map(([k, v]) => (
           <Link key={k} href={href({ entrega: k || undefined })} className={`rounded-full px-3 py-1 ${(sp.entrega ?? "") === k ? "bg-blush-100 font-semibold" : "text-soft hover:bg-blush-100"}`}>
             {v}
-            {k && ` (${todos.filter((p) => metodoEntrega(p).clave === k).length})`}
+            {k && ` (${porEntrega[k] ?? 0})`}
           </Link>
         ))}
       </div>
 
       <p className="mb-2 text-sm text-soft">
-        {pedidos.length} pedido(s){estado === "pendientes" && " · ordenados para armar: moto, correo, retiro (el más viejo primero)"}
+        {total > PEDIDOS_POR_PAGINA
+          ? `${(pagina - 1) * PEDIDOS_POR_PAGINA + 1}–${Math.min(pagina * PEDIDOS_POR_PAGINA, total)} de ${total} pedidos`
+          : `${total} pedido(s)`}
+        {estado === "pendientes" && " · ordenados para armar: moto, correo, retiro (el más viejo primero)"}
       </p>
 
       {/* mobile */}
@@ -186,6 +186,26 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
           </table>
         </div>
       </Card>
+
+      {paginas > 1 && (
+        <nav className="mt-4 flex items-center justify-center gap-2 text-sm">
+          {pagina > 1 ? (
+            <Link href={href({ pagina: String(pagina - 1) })} className="rounded-lg border border-line bg-white px-3 py-2 font-semibold text-rose-deep hover:bg-blush-50">
+              ← Anterior
+            </Link>
+          ) : (
+            <span className="rounded-lg border border-line px-3 py-2 text-soft opacity-50">← Anterior</span>
+          )}
+          <span className="px-2 text-soft">Página {pagina} de {paginas}</span>
+          {pagina < paginas ? (
+            <Link href={href({ pagina: String(pagina + 1) })} className="rounded-lg border border-line bg-white px-3 py-2 font-semibold text-rose-deep hover:bg-blush-50">
+              Siguiente →
+            </Link>
+          ) : (
+            <span className="rounded-lg border border-line px-3 py-2 text-soft opacity-50">Siguiente →</span>
+          )}
+        </nav>
+      )}
     </div>
   );
 }

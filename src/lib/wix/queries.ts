@@ -86,8 +86,14 @@ export const ESTADOS_ENTREGA: Record<"DISPATCHED" | "PICKED_UP", string> = {
 
 const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, delivery_status, delivered_at, delivered_by, tracking_number, tracking_synced, tracking_error, refund_resolution, refund_resolved_at, refund_resolved_by, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
 
-export async function getPedidosWix(f: { estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: boolean; limite?: number }): Promise<PedidoWix[]> {
-  let q = db().from("channel_orders").select(SELECT).order("ordered_at", { ascending: false, nullsFirst: false }).limit(f.limite ?? 300);
+export const PEDIDOS_POR_PAGINA = 50;
+// delivery_rank (columna calculada en la base, misma regla que metodoEntrega)
+export const RANGO_ENTREGA: Record<string, number> = { MOTO: 1, CORREO: 2, RETIRO: 3 };
+
+type FiltrosPedidos = { estado?: string; canal?: string; q?: string; desde?: string; hasta?: string; revisar?: boolean; entrega?: string; pagina?: number };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filtrarPedidos<Q extends { in: any; eq: any; is: any; neq: any; not: any; gte: any; lte: any; or: any }>(q: Q, f: FiltrosPedidos): Q {
   if (f.estado === "pendientes") q = q.in("state", ["RESERVED", "PARTIAL"]);
   else if (f.estado === "PROCESSED") q = q.eq("state", "PROCESSED").is("delivery_status", null); // armado, falta que salga
   else if (f.estado === "DISPATCHED" || f.estado === "PICKED_UP") q = q.eq("state", "PROCESSED").eq("delivery_status", f.estado);
@@ -98,12 +104,29 @@ export async function getPedidosWix(f: { estado?: string; canal?: string; q?: st
   if (f.desde) q = q.gte("ordered_at", `${f.desde}T00:00:00-03:00`);
   if (f.hasta) q = q.lte("ordered_at", `${f.hasta}T23:59:59-03:00`);
   if (f.q) {
-    const t = f.q.replace(/[%,]/g, "").trim();
+    const t = f.q.replace(/[%,()]/g, "").trim();
     if (t) q = q.or(`number.ilike.%${t}%,customer.ilike.%${t}%,email.ilike.%${t}%`);
   }
-  const { data, error } = await q;
+  return q;
+}
+
+// una página de pedidos + el total y cuántos hay por método de entrega (con los mismos filtros)
+export async function getPedidosWix(f: FiltrosPedidos): Promise<{ pedidos: PedidoWix[]; total: number; porEntrega: Record<string, number> }> {
+  const desde = (Math.max(1, f.pagina ?? 1) - 1) * PEDIDOS_POR_PAGINA;
+  let q = filtrarPedidos(db().from("channel_orders").select(SELECT, { count: "exact" }), f);
+  if (f.entrega && RANGO_ENTREGA[f.entrega]) q = q.eq("delivery_rank", RANGO_ENTREGA[f.entrega]);
+  // "Para armar": primero lo que sale antes (moto ~13 h, correo hasta 18 h, retiro), el más viejo primero
+  q = f.estado === "pendientes"
+    ? q.order("delivery_rank").order("ordered_at", { ascending: true, nullsFirst: false })
+    : q.order("ordered_at", { ascending: false, nullsFirst: false });
+  const conteos = Object.entries(RANGO_ENTREGA).map(async ([clave, rango]) => {
+    const { count, error } = await filtrarPedidos(db().from("channel_orders").select("id", { count: "exact", head: true }), f).eq("delivery_rank", rango);
+    if (error) throw new Error(error.message);
+    return [clave, count ?? 0] as const;
+  });
+  const [{ data, error, count }, porEntrega] = await Promise.all([q.range(desde, desde + PEDIDOS_POR_PAGINA - 1), Promise.all(conteos)]);
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as PedidoWix[];
+  return { pedidos: (data ?? []) as unknown as PedidoWix[], total: count ?? 0, porEntrega: Object.fromEntries(porEntrega) };
 }
 
 export async function getPedidoWix(id: string): Promise<{ pedido: PedidoWix; items: ItemPedido[]; fulfillments: Fulfillment[]; reembolsos: Reembolso[] } | null> {
