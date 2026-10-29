@@ -1,6 +1,6 @@
 import { can, requireSection } from "@/lib/auth";
 import Link from "next/link";
-import { getReservados } from "@/lib/wix/queries";
+import { getEstadoWixStock, getReservados, type EstadoWixStock } from "@/lib/wix/queries";
 import { enCajaCerrada, filtrarBalances, getBalances, getBalancesAt, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
 import { ajustarStock, cambiarCajaLote } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
@@ -223,6 +223,51 @@ type SP = {
   dir?: string;
 };
 
+function haceCuanto(iso: string): string {
+  const min = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (min < 1) return "recién";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  return `hace ${Math.round(h / 24)} día(s)`;
+}
+
+function ChipWix() {
+  return (
+    <span title="Wix muestra el disponible de este producto (Depósito + Store)" className="ml-1.5 whitespace-nowrap rounded-full bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-emerald-800">
+      ✓ Wix
+    </span>
+  );
+}
+
+// ¿Wix está mostrando nuestro stock?
+function CartelWix({ wix }: { wix: EstadoWixStock }) {
+  if (!wix.activo) {
+    return (
+      <div className="mb-3 rounded-lg border border-line bg-white px-3 py-2 text-sm text-soft">
+        Wix no está sincronizado con este stock: la publicación está apagada en{" "}
+        <Link href="/wix" className="font-semibold text-rose-deep hover:underline">Integración Wix</Link>.
+      </div>
+    );
+  }
+  const problemas = wix.errores > 0 || !wix.ultima;
+  return (
+    <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${problemas ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+      <b>{problemas ? "⚠ Wix sincronizado con problemas" : "✓ Sincronizado al stock de Wix"}</b>
+      <span>
+        {" "}· Wix muestra el disponible de Depósito + Store de {wix.productos.size} producto(s) marcados con ✓ Wix
+        {wix.ultima ? ` · última actualización ${haceCuanto(wix.ultima)}` : " · todavía no se publicó"}
+        {wix.pendientes > 0 && ` · ${wix.pendientes} producto(s) por actualizar en los próximos minutos`}
+        {wix.errores > 0 && ` · ${wix.errores} SKU con error al publicar`}
+        {!!wix.diferencias && ` · ${wix.diferencias} diferencia(s) corregidas en la última conciliación`}
+      </span>
+      {problemas && (
+        <Link href="/wix" className="ml-1 font-semibold text-rose-deep hover:underline">Ver Integración Wix →</Link>
+      )}
+    </div>
+  );
+}
+
 export default async function StockPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireSection("stock");
   const sp = await searchParams;
@@ -233,12 +278,14 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   if (historico) delete sp.disp; // el disponible de un día pasado no se puede saber (estados de lote cambian)
   const puedeAjustar = !historico && (user.role === "ADMIN" || user.role === "MANAGER");
   const puedeAbrir = !historico && can(user, "ingresos");
-  const [balances, locations, productos, reservados] = await Promise.all([
+  const [balances, locations, productos, reservados, wix] = await Promise.all([
     fecha ? getBalancesAt(fecha) : getBalances(),
     getLocations(),
     getProducts(),
     historico ? Promise.resolve(new Map<string, number>()) : getReservados(),
+    historico ? Promise.resolve(null) : getEstadoWixStock(),
   ]);
+  const enWix = (pid: string) => !!wix?.activo && wix.productos.has(pid);
   // unidades reservadas por pedidos web (por producto, sumando sus ubicaciones)
   const reservadoDe = (pid: string, filas: { location: { id: string } }[]) =>
     [...new Set(filas.map((f) => f.location.id))].reduce((s, loc) => s + (reservados.get(`${pid}|${loc}`) ?? 0), 0);
@@ -437,6 +484,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       </form>
 
       <Flash ok={sp.ok} error={sp.error} />
+      {wix && <CartelWix wix={wix} />}
       {fecha && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <span>
@@ -469,7 +517,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
               <div key={g.product.id} className="rounded-lg border border-blush-100 bg-white p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">{g.product.name}</div>
+                    <div className="text-sm font-medium">{g.product.name}{enWix(g.product.id) && <ChipWix />}</div>
                     <div className="font-mono text-xs text-soft">{g.product.sku}</div>
                   </div>
                   <span className="shrink-0 font-display text-3xl leading-none">
@@ -514,6 +562,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <td className={`${td} font-mono text-xs`}>{g.product.sku}</td>
                       <td className={td}>
                         {g.product.name}
+                        {enWix(g.product.id) && <ChipWix />}
                         <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} historico={historico} />
                       </td>
                       <td className={td}>

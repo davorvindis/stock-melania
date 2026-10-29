@@ -95,7 +95,7 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
             <li><b>Probar conexión</b>: verifica credenciales y versión de catálogo.</li>
             <li><b>Mapear catálogo</b>: vincula cada SKU de <Link href="/equivalencias" className="text-rose-deep hover:underline">Equivalencias</Link> con su producto/variante en Wix. Hacelo al principio y cada vez que Joel cree productos nuevos.</li>
             <li><b>Sincronizar ahora</b>: procesa pendientes, sondea pedidos nuevos, manda fulfillments y publica stock (lo mismo que hace el cron).</li>
-            <li><b>Publicar todo</b>: manda el disponible de Depósito de todos los SKU a Wix.</li>
+            <li><b>Publicar todo</b>: manda el disponible de Depósito + Store de todos los SKU a Wix.</li>
             <li><b>Conciliar</b>: compara el stock que muestra Wix con el disponible de Melania y corrige las diferencias. Corre solo una vez por día.</li>
           </ul>
         </Card>
@@ -106,7 +106,7 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
               <input type="checkbox" name="sync_inventory" value="si" defaultChecked={!!s.sync_inventory} className="mt-1" />
               <span>
                 <b>Publicar el disponible a Wix</b>
-                <span className="block text-xs text-soft">Stock Melania manda a Wix el disponible de Depósito (físico − reservado) por cada SKU. Packs = disponible ÷ unidades del pack; combos = el componente que menos alcanza.</span>
+                <span className="block text-xs text-soft">Stock Melania manda a Wix el disponible de Depósito + Store (físico − reservado − cuarentena) por cada SKU, así el POS del local tampoco se traba. Packs = disponible ÷ unidades del pack; combos = el componente que menos alcanza.</span>
               </span>
             </label>
             <label className="flex items-start gap-2">

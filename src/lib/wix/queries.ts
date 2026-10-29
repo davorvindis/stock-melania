@@ -312,3 +312,41 @@ export async function getRegularizados(limite = 50): Promise<Regularizado[]> {
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as Regularizado[];
 }
+
+// cartel de la pestaña Stock: si Wix está mostrando nuestro stock y qué productos se publican
+export type EstadoWixStock = {
+  activo: boolean;
+  ultima: string | null;
+  errores: number;
+  pendientes: number;
+  diferencias: number | null;
+  productos: Set<string>;
+};
+
+export async function getEstadoWixStock(): Promise<EstadoWixStock> {
+  const cli = db();
+  const [set, eqs, cola] = await Promise.all([
+    cli.from("app_settings").select("value").eq("key", "wix").single(),
+    cli
+      .from("channel_skus")
+      .select("wix_sync_error, wix_last_sync_at, lines:channel_sku_lines(product_id)")
+      .eq("active", true)
+      .eq("publish_stock", true)
+      .not("wix_product_id", "is", null),
+    cli.from("wix_sync_queue").select("product_id", { count: "exact", head: true }),
+  ]);
+  if (set.error) throw new Error(set.error.message);
+  if (eqs.error) throw new Error(eqs.error.message);
+  const v = set.data.value as { enabled?: boolean; sync_inventory?: boolean; last_reconcile_diffs?: number | null };
+  const rows = (eqs.data ?? []) as unknown as { wix_sync_error: string | null; wix_last_sync_at: string | null; lines: { product_id: string }[] }[];
+  let ultima: string | null = null;
+  for (const r of rows) if (r.wix_last_sync_at && (!ultima || r.wix_last_sync_at > ultima)) ultima = r.wix_last_sync_at;
+  return {
+    activo: !!v.enabled && !!v.sync_inventory,
+    ultima,
+    errores: rows.filter((r) => r.wix_sync_error).length,
+    pendientes: cola.count ?? 0,
+    diferencias: v.last_reconcile_diffs ?? null,
+    productos: new Set(rows.flatMap((r) => r.lines.map((l) => l.product_id))),
+  };
+}

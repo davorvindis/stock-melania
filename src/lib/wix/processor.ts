@@ -418,6 +418,19 @@ export function disponibleSku(eq: { lines: EqLinea[] }, disp: Map<string, number
   return min === Infinity ? 0 : min;
 }
 
+// lo que se publica a Wix = disponible de Depósito + Store (el POS del local usa el mismo
+// inventario de Wix, así que contar solo Depósito trabaría ventas del local)
+async function disponiblePublicable(s: WixSettings, pids?: string[]): Promise<Map<string, number>> {
+  const locs = [s.location_deposito, s.location_store].filter(Boolean) as string[];
+  let q = db().from("v_stock_disponible").select("product_id, available").in("location_id", locs);
+  if (pids) q = q.in("product_id", pids);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  const disp = new Map<string, number>();
+  for (const r of data ?? []) disp.set(r.product_id, (disp.get(r.product_id) ?? 0) + Math.max(0, Number(r.available)));
+  return disp;
+}
+
 export async function publicarInventario(todo = false): Promise<{ skus: number; errores: number; omitidos: number }> {
   const s = await getWixSettings();
   if (!s.enabled || !s.sync_inventory || !wixConfigurado() || !s.location_deposito) return { skus: 0, errores: 0, omitidos: 0 };
@@ -453,12 +466,7 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
   const lista = (eqs.data ?? []) as unknown as Eq[];
   // disponible en Depósito de todos los productos involucrados
   const pids = [...new Set(lista.flatMap((e) => e.lines.map((l) => l.product_id)))];
-  const disp = new Map<string, number>();
-  if (pids.length) {
-    const d = await cli.from("v_stock_disponible").select("product_id, available").eq("location_id", s.location_deposito).in("product_id", pids);
-    if (d.error) throw new Error(d.error.message);
-    for (const r of d.data ?? []) disp.set(r.product_id, Number(r.available));
-  }
+  const disp = pids.length ? await disponiblePublicable(s, pids) : new Map<string, number>();
   const version = s.catalog_version ?? (await getCatalogVersion());
   let skus = 0;
   let errores = 0;
@@ -562,10 +570,7 @@ export async function conciliarInventario(actor = ACTOR): Promise<{ revisados: n
     .eq("publish_stock", true); // los MAYORISTA (marcadores internos) no reciben stock
   if (eqs.error) throw new Error(eqs.error.message);
   const lista = (eqs.data ?? []) as unknown as Eq[];
-  const disp = new Map<string, number>();
-  const d = await cli.from("v_stock_disponible").select("product_id, available").eq("location_id", s.location_deposito);
-  if (d.error) throw new Error(d.error.message);
-  for (const r of d.data ?? []) disp.set(r.product_id, Number(r.available));
+  const disp = await disponiblePublicable(s);
 
   let revisados = 0;
   const difs: { sku: string; wix: number | null; melania: number }[] = [];
