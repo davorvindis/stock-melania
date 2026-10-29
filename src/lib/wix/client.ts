@@ -110,8 +110,10 @@ export function soloServicios(o: WixOrder): boolean {
 }
 
 export function normalizarPedido(o: WixOrder): PedidoNormalizado {
-  const c = o.billingInfo?.contactDetails ?? o.recipientInfo?.contactDetails;
-  const nombre = [c?.firstName, c?.lastName].filter(Boolean).join(" ") || c?.company || null;
+  // la facturación puede venir vacía ({}), ej. compra como invitada: se usa el destinatario del envío
+  const nombreDe = (c?: { firstName?: string; lastName?: string; company?: string }) =>
+    [c?.firstName?.trim(), c?.lastName?.trim()].filter(Boolean).join(" ") || c?.company?.trim() || null;
+  const nombre = nombreDe(o.billingInfo?.contactDetails) ?? nombreDe(o.recipientInfo?.contactDetails);
   return {
     external_id: o.id,
     number: o.number != null ? String(o.number) : null,
