@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
-import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem } from "@/lib/wix/queries";
+import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem, reembolsablesItem } from "@/lib/wix/queries";
 import { getWixSettings } from "@/lib/wix/processor";
-import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido, resolverReembolsoPos } from "@/lib/wix/actions";
+import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido, reembolsarPedido, resolverReembolsoPos } from "@/lib/wix/actions";
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -19,7 +19,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const r = await getPedidoWix(id);
   if (!r) notFound();
-  const { pedido: p, items, fulfillments } = r;
+  const { pedido: p, items, fulfillments, reembolsos } = r;
   const [settings, revisiones] = await Promise.all([getWixSettings(), getRevisionesPedido(id)]);
   const puedeRevisar = user.role === "ADMIN" || user.role === "MANAGER";
   const disp = p.location?.id ? await getDisponibles(p.location.id, items.flatMap((i) => i.reservations.map((x) => x.product.id))) : new Map();
@@ -38,6 +38,54 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   const puedeSeguimiento = p.channel_type !== "POS" && (p.state === "PROCESSED" || p.state === "PARTIAL") && (llevaSeguimiento || !!p.tracking_number);
   const siteId = process.env.WIX_SITE_ID;
   const canal = p.channel_type === "POS" ? "Local (POS)" : p.channel_type === "BACKOFFICE_MERCHANT" ? "Manual en Wix" : "Tienda web";
+  // reembolso de lo ya armado (pedidos web): total o parcial, por producto
+  const aReembolsar = items.map((i) => ({ item: i, max: reembolsablesItem(i) })).filter((x) => x.max > 0);
+  const puedeReembolsar =
+    puedeRevisar && p.channel_type !== "POS" && (p.state === "PROCESSED" || p.state === "PARTIAL") && aSacar.length === 0 && aReembolsar.length > 0;
+  const reembolsosPorItem = new Map<string, typeof reembolsos>();
+  for (const x of reembolsos) reembolsosPorItem.set(x.item_id, [...(reembolsosPorItem.get(x.item_id) ?? []), x]);
+  const panelReembolso = puedeReembolsar && (
+    <details className="group open:basis-full">
+      <summary className="cursor-pointer list-none rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-800 hover:bg-red-50 group-open:inline-block">
+        Reembolso
+      </summary>
+      <form action={reembolsarPedido} className="mt-2 rounded-lg border border-red-200 bg-white p-3 text-sm">
+        <input type="hidden" name="id" value={p.id} />
+        <input type="hidden" name="batch" value={randomUUID()} />
+        <p className="text-xs text-soft">
+          Primero hacé el reembolso en Wix (la plata se devuelve ahí). Acá se registra qué pasa con el stock. Para un reembolso parcial, cambiá las cantidades.
+        </p>
+        <table className="mt-2 w-full">
+          <tbody>
+            {aReembolsar.map(({ item, max }) => (
+              <tr key={item.id} className="border-b border-blush-100">
+                <td className="py-1.5 pr-2">{item.name ?? item.external_sku}</td>
+                <td className="whitespace-nowrap py-1.5 text-right">
+                  <input type="number" name={`reembolso_${item.id}`} min={0} max={max} step="1" defaultValue={max} className={`${input} w-20`} />
+                  <span className="ml-1 text-xs text-soft">de {fmtQty(max)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <fieldset className="mt-3 space-y-1">
+          <legend className="font-medium">¿El producto vuelve al stock?</legend>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="vuelve" value="si" defaultChecked /> Sí, vuelve al Depósito (se revierte la venta)
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="vuelve" value="no" /> No vuelve (fallado, se lo quedó la clienta): el stock no se toca
+          </label>
+        </fieldset>
+        <SubmitButton
+          confirmar="¿Confirmás el reembolso? Se va a registrar con tu usuario."
+          className="mt-3 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800"
+        >
+          Confirmar reembolso
+        </SubmitButton>
+      </form>
+    </details>
+  );
   const porItem = new Map<string, typeof fulfillments>();
   for (const f of fulfillments) porItem.set(f.item_id, [...(porItem.get(f.item_id) ?? []), f]);
 
@@ -214,6 +262,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                 <input type="hidden" name="id" value={p.id} />
                 <input type="hidden" name="entrega" value={e} />
                 <SubmitButton
+                  confirmar={e === "DISPATCHED" ? "¿Confirmás que el pedido salió (despachado)?" : "¿Confirmás que la clienta lo retiró?"}
                   className={
                     i === 0
                       ? "rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper"
@@ -224,12 +273,14 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                 </SubmitButton>
               </form>
             ))}
+            {panelReembolso}
           </div>
           <p className="mt-2 text-xs text-soft">
             Despachado: salió por Correo Argentino, moto o se llevó a algún lugar. Retirado: la clienta lo pasó a buscar por el local.
           </p>
         </Card>
       )}
+      {!puedeEntregar && puedeReembolsar && <Card className="mt-3">{panelReembolso}</Card>}
       {p.delivery_status && puedeRevisar && p.channel_type !== "POS" && (
         <form action={marcarEntregaPedido} className="mt-2">
           <input type="hidden" name="id" value={p.id} />
@@ -302,6 +353,11 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                         {it.reservations.filter((rv) => Number(rv.to_return) > 0).map((rv) => (
                           <div key={rv.id} className="font-medium text-red-700">
                             Sacar del paquete: {fmtQty(rv.to_return)} {rv.product.name}
+                          </div>
+                        ))}
+                        {(reembolsosPorItem.get(it.id) ?? []).map((x) => (
+                          <div key={x.id} className="font-medium text-red-700">
+                            Reembolso {fmtQty(x.quantity)} · {x.returned ? "volvió al Depósito" : "no volvió"} · {x.actor} · {fmtDateTime(x.created_at)}
                           </div>
                         ))}
                         {it.note && it.resolved && <div className="text-amber-800">{it.note}</div>}

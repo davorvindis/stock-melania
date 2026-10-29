@@ -9,18 +9,20 @@ type Props = {
   value?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formAction?: any;
+  confirmar?: string; // pregunta antes de enviar, para que no se apriete por error
 };
 
 // Botón de envío con spinner: se deshabilita mientras la acción corre
 // (también evita dobles clicks). Todos los botones del form quedan
 // deshabilitados durante el envío.
-export function SubmitButton({ children, className = "", ...props }: Props) {
+export function SubmitButton({ children, className = "", confirmar, ...props }: Props) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
       disabled={pending}
       aria-busy={pending}
+      onClick={confirmar ? (e) => { if (!window.confirm(confirmar)) e.preventDefault(); } : undefined}
       className={`relative ${className} disabled:opacity-60`}
       {...props}
     >

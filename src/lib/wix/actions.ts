@@ -132,6 +132,44 @@ export async function resolverReembolsoPos(formData: FormData) {
   volverOk(back, raw === "si" ? "Listo: la venta se revirtió y el producto volvió al stock del Store" : "Listo: reembolso registrado, el stock no se tocó");
 }
 
+// ── Pedidos web: reembolso total o parcial (Yura, Mel, Joel) ──────────
+// la plata se devuelve en Wix; acá se registra si el producto vuelve al Depósito
+export async function reembolsarPedido(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const id = uuid.safeParse(String(formData.get("id") ?? ""));
+  if (!id.success) volverConError("/pedidos", "Pedido inválido");
+  const back = `/pedidos/${id.data}`;
+  const lineas: { item_id: string; quantity: number }[] = [];
+  for (const [k, v] of formData.entries()) {
+    if (!k.startsWith("reembolso_")) continue;
+    const itemId = k.slice(10);
+    const q = Number(v);
+    if (!uuid.safeParse(itemId).success) volverConError(back, "Ítem inválido");
+    if (!Number.isInteger(q) || q < 0) volverConError(back, "Las cantidades deben ser enteras");
+    if (q > 0) lineas.push({ item_id: itemId, quantity: q });
+  }
+  if (lineas.length === 0) volverConError(back, "Indicá qué cantidades se reembolsan");
+  const vuelve = String(formData.get("vuelve") ?? "");
+  if (vuelve !== "si" && vuelve !== "no") volverConError(back, "Indicá si el producto vuelve al stock");
+  const batch = uuid.safeParse(String(formData.get("batch") ?? ""));
+  if (!batch.success) volverConError(back, "Formulario vencido: recargá la página");
+  const { data, error } = await db().rpc("wix_refund_order", {
+    p_order_id: id.data,
+    p_lines: lineas,
+    p_returned: vuelve === "si",
+    p_actor: user.alias,
+    p_batch: batch.data,
+  });
+  if (error) volverConError(back, error.message);
+  const r = data as { repeated?: boolean; total?: boolean };
+  if (r.repeated) volverOk(back, "Ese reembolso ya estaba cargado (no se hizo dos veces)");
+  if (vuelve === "si") after(() => publicarInventario().catch(() => {}));
+  volverOk(
+    back,
+    `Reembolso ${r.total ? "total" : "parcial"} cargado: ${vuelve === "si" ? "la venta se revirtió y el producto volvió al Depósito" : "el stock no se tocó"}.`
+  );
+}
+
 // ── Pedidos: cargar o cambiar el N° de seguimiento (Correo Argentino) ──
 export async function guardarSeguimiento(formData: FormData) {
   const user = await requireSection("pedidos");

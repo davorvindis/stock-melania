@@ -52,11 +52,20 @@ export type ItemPedido = {
     consumed: number;
     released: number;
     to_return: number; // despachado de más: sacar del paquete al rearmar
+    refunded_kept: number; // reembolsado sin volver al stock
     status: "ACTIVE" | "CONSUMED" | "RELEASED";
     sale_type: string;
     product: { id: string; sku: string; name: string; unit: string };
   }[];
 };
+
+export type Reembolso = { id: string; item_id: string; quantity: number; returned: boolean; actor: string; created_at: string };
+
+// unidades del ítem ya armadas que todavía se pueden reembolsar (mínimo entre sus productos)
+export function reembolsablesItem(it: ItemPedido): number {
+  if (it.reservations.length === 0) return 0;
+  return Math.min(...it.reservations.map((r) => Math.floor((Number(r.consumed) - Number(r.refunded_kept)) / Number(r.per_unit))));
+}
 
 export type Fulfillment = { id: string; quantity: number; actor: string; created_at: string; wix_synced: boolean; wix_error: string | null; item_id: string };
 
@@ -97,20 +106,26 @@ export async function getPedidosWix(f: { estado?: string; canal?: string; q?: st
   return (data ?? []) as unknown as PedidoWix[];
 }
 
-export async function getPedidoWix(id: string): Promise<{ pedido: PedidoWix; items: ItemPedido[]; fulfillments: Fulfillment[] } | null> {
+export async function getPedidoWix(id: string): Promise<{ pedido: PedidoWix; items: ItemPedido[]; fulfillments: Fulfillment[]; reembolsos: Reembolso[] } | null> {
   const cli = db();
-  const [p, it, fu] = await Promise.all([
+  const [p, it, fu, re] = await Promise.all([
     cli.from("channel_orders").select(SELECT).eq("id", id).maybeSingle(),
     cli
       .from("channel_order_items")
-      .select("id, external_line_id, external_sku, name, quantity, unit_price, resolved, note, reservations(id, per_unit, quantity, consumed, released, to_return, status, sale_type, product:products(id, sku, name, unit))")
+      .select("id, external_line_id, external_sku, name, quantity, unit_price, resolved, note, reservations(id, per_unit, quantity, consumed, released, to_return, refunded_kept, status, sale_type, product:products(id, sku, name, unit))")
       .eq("order_id", id)
       .order("external_line_id"),
     cli.from("channel_order_fulfillments").select("id, quantity, actor, created_at, wix_synced, wix_error, item_id").eq("order_id", id).order("created_at"),
+    cli.from("channel_order_refunds").select("id, item_id, quantity, returned, actor, created_at").eq("order_id", id).order("created_at"),
   ]);
-  for (const r of [p, it, fu]) if (r.error) throw new Error(r.error.message);
+  for (const r of [p, it, fu, re]) if (r.error) throw new Error(r.error.message);
   if (!p.data) return null;
-  return { pedido: p.data as unknown as PedidoWix, items: (it.data ?? []) as unknown as ItemPedido[], fulfillments: (fu.data ?? []) as Fulfillment[] };
+  return {
+    pedido: p.data as unknown as PedidoWix,
+    items: (it.data ?? []) as unknown as ItemPedido[],
+    fulfillments: (fu.data ?? []) as Fulfillment[],
+    reembolsos: (re.data ?? []) as Reembolso[],
+  };
 }
 
 // avisos "A revisar" ya resueltos de un pedido (quién, cuándo, qué se hizo)
