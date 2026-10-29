@@ -87,11 +87,13 @@ export async function getVentas(f: FiltrosVentas): Promise<LineaVenta[]> {
     filas.push(...((data ?? []) as unknown as LineaVenta[]));
     if (!data || data.length < 1000) break;
   }
-  // sacar las revertidas
+  // sacar las revertidas (las tandas van en paralelo)
+  const tandas: string[][] = [];
+  for (let i = 0; i < filas.length; i += 300) tandas.push(filas.slice(i, i + 300).map((m) => m.id));
+  const res = await Promise.all(tandas.map((ids) => db().from("inventory_movements").select("reversal_of").in("reversal_of", ids)));
   const revertidas = new Set<string>();
-  for (let i = 0; i < filas.length; i += 300) {
-    const ids = filas.slice(i, i + 300).map((m) => m.id);
-    const { data } = await db().from("inventory_movements").select("reversal_of").in("reversal_of", ids);
+  for (const { data, error } of res) {
+    if (error) throw new Error(error.message);
     for (const r of data ?? []) revertidas.add(r.reversal_of as string);
   }
   return filas.filter((m) => !revertidas.has(m.id));
