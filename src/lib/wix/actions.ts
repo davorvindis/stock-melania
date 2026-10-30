@@ -333,13 +333,16 @@ export async function mapearCatalogoWix() {
   let r: Awaited<ReturnType<typeof mapearCatalogo>>;
   try {
     r = await mapearCatalogo(user.alias);
+    // las equivalencias nuevas reciben su stock ya, sin esperar al cron
+    if (r.creadas.length) await publicarInventario();
   } catch (e) {
     volverConError("/wix", (e as Error).message);
   }
   {
+    const creadas = r.creadas.length ? ` Equivalencias creadas solas (mismo SKU que el producto) y stock publicado: ${r.creadas.slice(0, 15).join(", ")}${r.creadas.length > 15 ? "…" : ""}.` : "";
     const faltan = r.faltanEnWix.length ? ` Sin producto en Wix: ${r.faltanEnWix.slice(0, 15).join(", ")}${r.faltanEnWix.length > 15 ? "…" : ""}.` : "";
     const sobran = r.sobranEnWix.length ? ` SKU de Wix sin equivalencia: ${r.sobranEnWix.slice(0, 15).join(", ")}${r.sobranEnWix.length > 15 ? "…" : ""}.` : "";
-    volverOk("/wix", `Catálogo ${r.version}: ${r.mapeados} SKU mapeados, ${r.sinSeguimiento} sin seguimiento de inventario en Wix.${faltan}${sobran}`);
+    volverOk("/wix", `Catálogo ${r.version}: ${r.mapeados} SKU mapeados, ${r.sinSeguimiento} sin seguimiento de inventario en Wix.${creadas}${faltan}${sobran}`);
   }
 }
 

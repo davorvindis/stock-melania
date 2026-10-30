@@ -521,7 +521,7 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
 
 // ── Mapear catálogo de Wix ↔ equivalencias ──────────────────────────
 
-export async function mapearCatalogo(actor: string): Promise<{ version: string; mapeados: number; faltanEnWix: string[]; sobranEnWix: string[]; sinSeguimiento: number }> {
+export async function mapearCatalogo(actor: string): Promise<{ version: string; mapeados: number; faltanEnWix: string[]; sobranEnWix: string[]; creadas: string[]; sinSeguimiento: number }> {
   const version = await getCatalogVersion();
   const enWix = version === "V3_CATALOG" ? await listarSkusV3() : await listarSkusV1();
   const porSku = new Map(enWix.map((s) => [s.sku.toUpperCase(), s]));
@@ -546,10 +546,49 @@ export async function mapearCatalogo(actor: string): Promise<{ version: string; 
       .eq("id", e.id);
     mapeados++;
   }
+  // SKU de Wix sin equivalencia que coinciden exacto con un producto nuestro: se crea sola la
+  // equivalencia 1 a 1 (descuenta 1 unidad, publica stock). Packs, kits y SKU distintos siguen a mano.
+  const sinEq = [...new Map(enWix.filter((s) => !nuestros.has(s.sku.toUpperCase())).map((s) => [s.sku.toUpperCase(), s])).values()];
+  const creadas: string[] = [];
+  const aPublicar: string[] = [];
+  if (sinEq.length) {
+    const prods = await cli.from("products").select("id, sku, name").eq("active", true);
+    if (prods.error) throw new Error(prods.error.message);
+    const porProducto = new Map((prods.data ?? []).map((p) => [p.sku.toUpperCase(), p]));
+    for (const w of sinEq) {
+      const p = porProducto.get(w.sku.toUpperCase());
+      if (!p) continue;
+      const { data: id, error } = await cli.rpc("save_channel_sku", {
+        p_id: null,
+        p_channel: "WIX",
+        p_sku: w.sku,
+        p_label: p.name,
+        p_option: null,
+        p_active: true,
+        p_notes: "Creada sola al mapear el catálogo (mismo SKU que el producto)",
+        p_lines: [{ product_id: p.id, quantity: 1 }],
+        p_actor: actor,
+      });
+      if (error) continue; // si falla (ej. la crearon recién a mano) queda en la lista de sin equivalencia
+      await cli
+        .from("channel_skus")
+        .update({ publish_stock: true, wix_product_id: w.productId, wix_variant_id: w.variantId, wix_inventory_item_id: w.inventoryItemId, wix_tracked: w.tracked, wix_mapped_at: ahora })
+        .eq("id", id as string);
+      nuestros.add(w.sku.toUpperCase());
+      creadas.push(w.sku);
+      aPublicar.push(p.id);
+      mapeados++;
+    }
+    // a la cola: el próximo publicarInventario les manda el stock
+    if (aPublicar.length) {
+      const q = await cli.from("wix_sync_queue").upsert([...new Set(aPublicar)].map((product_id) => ({ product_id, queued_at: new Date().toISOString() })));
+      if (q.error) throw new Error(q.error.message);
+    }
+  }
   const sobran = enWix.filter((s) => !nuestros.has(s.sku.toUpperCase())).map((s) => s.sku);
   await patchWixSettings({ catalog_version: version }, actor);
-  await cli.from("audit_logs").insert({ actor, action: "wix:map_catalog", entity: "channel_skus", entity_id: null, detail: { version, mapeados, faltan, sobran } });
-  return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };
+  await cli.from("audit_logs").insert({ actor, action: "wix:map_catalog", entity: "channel_skus", entity_id: null, detail: { version, mapeados, faltan, sobran, creadas } });
+  return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, creadas, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };
 }
 
 // ── Conciliación diaria de inventario ───────────────────────────────

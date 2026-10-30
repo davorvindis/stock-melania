@@ -395,6 +395,7 @@ export const MANUAL: Capitulo[] = [
     bloques: [
       L([
         "**Equivalencias Wix:** qué productos de Stock Melania descuenta cada SKU de Wix (incluye packs y combos). Cada producto o combo nuevo necesita su SKU en Wix y su equivalencia; si no, la venta cae en **Sin descontar**.",
+        solo("**Producto nuevo con el mismo SKU en Wix y en Melania:** no hace falta crear la equivalencia. En Integración Wix tocá **Mapear catálogo de Wix**: la crea sola (1 a 1) y publica el stock en el momento. Los packs, combos y SKU que no coinciden se siguen armando a mano en Equivalencias.", ADMIN),
         "**Publicar stock en Wix:** marca qué SKU reciben el stock de Melania; los internos \"MAYORISTA\" no lo reciben.",
         "**Integración Wix:** conexión, opciones (publicar el disponible, activar seguimiento), **Publicar todo el disponible**, **Conciliar stock con Wix** y últimos eventos.",
       ]),
