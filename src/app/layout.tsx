@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { Bebas_Neue, Montserrat } from "next/font/google";
 import { Nav } from "@/components/nav";
+import { SinRuedaEnNumeros } from "@/components/sin-rueda-en-numeros";
 import { getSessionUser, allowedSections } from "@/lib/auth";
 import { logout } from "@/lib/auth-actions";
 import { db } from "@/lib/db";
@@ -25,6 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="es" className={`${bebas.variable} ${montserrat.variable}`}>
       <body className="min-h-screen antialiased">
+        <SinRuedaEnNumeros />
         {conMenu ? (
           <>
             <header className="border-b border-line bg-white">
