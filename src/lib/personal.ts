@@ -37,8 +37,9 @@ export type RegistroHoras = {
   employee: { id: string; name: string };
 };
 
+// Faltas y Vacaciones son del equipo de Marrudi (las ECP solo están en Empleados)
 export async function getEmpleados(soloActivos = true): Promise<Empleado[]> {
-  let q = db().from("employees").select("id, name, active").order("name");
+  let q = db().from("employees").select("id, name, active").eq("employer", "MARRUDI").order("name");
   if (soloActivos) q = q.eq("active", true);
   const { data, error } = await q;
   if (error) throw new Error(error.message);

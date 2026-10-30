@@ -57,6 +57,7 @@ const grupos: Grupo[] = [
     items: [
       { href: "/faltas", label: "Faltas y horas", section: "faltas" },
       { href: "/vacaciones", label: "Vacaciones", section: "vacaciones" },
+      { href: "/empleados", label: "Empleados", section: "empleados" },
     ],
   },
   {

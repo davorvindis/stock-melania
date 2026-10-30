@@ -314,12 +314,13 @@ export async function bajaEmpleado(formData: FormData) {
   if (!id.success) volverConError(back, "Empleado inválido");
   const { data: emp } = await db().from("employees").select("name").eq("id", id.data).maybeSingle();
   if (!emp) volverConError(back, "Empleado inexistente");
-  const [{ count: r }, { count: v }, { count: a }] = await Promise.all([
+  const [{ count: r }, { count: v }, { count: a }, { count: s }] = await Promise.all([
     db().from("time_records").select("id", { count: "exact", head: true }).eq("employee_id", id.data),
     db().from("vacation_requests").select("id", { count: "exact", head: true }).eq("employee_id", id.data),
     db().from("vacation_allowances").select("employee_id", { count: "exact", head: true }).eq("employee_id", id.data),
+    db().from("payroll_entries").select("id", { count: "exact", head: true }).eq("employee_id", id.data),
   ]);
-  const conHistorial = (r ?? 0) + (v ?? 0) + (a ?? 0) > 0;
+  const conHistorial = (r ?? 0) + (v ?? 0) + (a ?? 0) + (s ?? 0) > 0;
   const { error } = conHistorial
     ? await db().from("employees").update({ active: false }).eq("id", id.data)
     : await db().from("employees").delete().eq("id", id.data);

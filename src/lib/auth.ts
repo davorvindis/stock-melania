@@ -43,6 +43,7 @@ export const SECTIONS: readonly { key: string; label: string }[] = [
   { key: "costos", label: "Costos" },
   { key: "faltas", label: "Faltas y horas" },
   { key: "vacaciones", label: "Vacaciones" },
+  { key: "empleados", label: "Empleados y sueldos" },
   { key: "precios", label: "Historial de precios" },
   { key: "preventa", label: "Preventa" },
   { key: "wix", label: "Integración y equivalencias Wix" },
@@ -54,17 +55,17 @@ const ROLE_DEFAULTS: Record<Role, Record<string, boolean>> = {
   ADMIN: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
     productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: true,
-    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false, wix: true, pedidos: true, caja: false,
+    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, empleados: false, precios: false, preventa: false, wix: true, pedidos: true, caja: false,
   },
   MANAGER: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
     productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: false,
-    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false, wix: false, pedidos: true, caja: false,
+    ventas: true, compras: false, costos: false, faltas: false, vacaciones: false, empleados: false, precios: false, preventa: false, wix: false, pedidos: true, caja: false,
   },
   OPERATOR: {
     stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
     productos: true, proveedores: true, ubicaciones: false, auditoria: false, configuracion: false,
-    ventas: false, compras: false, costos: false, faltas: false, vacaciones: false, precios: false, preventa: false, wix: false, pedidos: true, caja: false,
+    ventas: false, compras: false, costos: false, faltas: false, vacaciones: false, empleados: false, precios: false, preventa: false, wix: false, pedidos: true, caja: false,
   },
 };
 

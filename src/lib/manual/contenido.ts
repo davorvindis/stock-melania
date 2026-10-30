@@ -389,6 +389,40 @@ export const MANUAL: Capitulo[] = [
     ],
   },
   {
+    id: "empleados",
+    titulo: "Empleados y novedades de sueldo",
+    ver: { s: ["empleados"] },
+    bloques: [
+      P("En **Equipo → Empleados** se cargan las novedades de sueldo de cada mes y sale armado el mensaje de WhatsApp para la contadora. Están los de **Marrudi SRL** y las **ECP** (casas particulares). Los sueldos los sigue calculando la contadora; acá queda lo que se le pasó, mes a mes."),
+      S("Fin de mes: pasar las novedades", [
+        N([
+          "Entrá a **Novedades del mes** (abre en el mes actual; con las flechas cambiás de mes).",
+          "Por persona cargá lo que te pasó Yura: **comisiones** (Yura), **horas y valor hora** (ECP), **aumento al básico %**, **bono**, y las tildes **Más aguinaldo**, **Restar presentismo** o **\"Mañana te paso bien\"** si todavía no tenés el dato.",
+          "Si en la app hay **vacaciones aprobadas o faltas** de ese mes, aparecen en la tarjeta y ya vienen escritas en \"Otras novedades\". Revisalas y corregí lo que haga falta.",
+          "Tocá **Guardar novedades**. Abajo aparece el **mensaje para la contadora**: tocá **Copiar mensaje** y pegalo en WhatsApp.",
+        ]),
+        A("Quien no tiene nada sale como **\"Sin novedades\"**. Podés corregir y volver a guardar las veces que haga falta; el mensaje se rearma solo.", "Tip"),
+        L([
+          "**Monto fijo en mano** (Karla, Margarita): con la tilde **Informar el monto** sale \"A cobrar en mano $…\"; sin la tilde, solo las novedades.",
+          "El monto que guardás en el mes actual queda como el vigente de la ficha y se precarga el mes siguiente.",
+          "Junio y diciembre vienen con **Más aguinaldo** tildado.",
+        ]),
+      ]),
+      S("Altas y bajas", [
+        L([
+          "En **Personal** está la ficha de cada persona: empleador, cómo cobra (convenio, monto en mano, básico + comisiones o por hora), monto vigente, ingreso y baja.",
+          "**Alta:** **+ Agregar persona** con su fecha de ingreso. Ese mes el mensaje avisa \"Ingresó el …\".",
+          "**Baja:** en su ficha poné el **último día de trabajo**. Ese mes el mensaje avisa la baja y desde el mes siguiente deja de aparecer (su historial queda).",
+          "Las ECP no aparecen en Faltas ni en Vacaciones; los de Marrudi sí.",
+        ]),
+      ]),
+      S("Evolución", [
+        P("Tabla con lo que se pasó cada mes por persona: total a cobrar o monto en mano, comisiones, aumentos, bonos, aguinaldo y notas, con la variación (▲/▼ %) contra el mes anterior. Tocá un mes para abrirlo."),
+      ]),
+      A("Esta pestaña tiene sueldos: viene habilitada solo para Joel. Se le puede habilitar a otra persona desde Configuración → permisos.", "Privado", "ambar", ADMIN),
+    ],
+  },
+  {
     id: "equivalencias",
     titulo: "Equivalencias e Integración Wix",
     ver: { s: ["wix"] },
