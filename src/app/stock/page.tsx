@@ -1,8 +1,8 @@
 import { can, requireSection } from "@/lib/auth";
 import Link from "next/link";
 import { getEstadoWixStock, getReservados, type EstadoWixStock } from "@/lib/wix/queries";
-import { enCajaCerrada, filtrarBalances, getBalances, getBalancesAt, getLocations, getProducts, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow } from "@/lib/queries";
-import { ajustarStock, cambiarCajaLote } from "@/lib/actions";
+import { enCajaCerrada, filtrarBalances, getBalances, getBalancesAt, getLocations, getProducts, getSeparables, isAvailable, TIPOS_PRODUCTO_LABEL, type BalanceRow, type Separable } from "@/lib/queries";
+import { ajustarStock, cambiarCajaLote, separarProducto } from "@/lib/actions";
 import { LOT_STATUS_LABELS, fmtQty, fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, SortTh, cmp, td, th, input } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -223,6 +223,47 @@ type SP = {
   dir?: string;
 };
 
+// blister/pack → unidades del mismo lote (ej. 500 blisters x4 → 2000 monodosis)
+function SepararForm({ sep, filas, destino }: { sep: Separable; filas: BalanceRow[]; destino: string }) {
+  const origenes = filas.filter((f) => !enCajaCerrada(f) && Number(f.quantity) > 0);
+  if (origenes.length === 0) return null;
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer py-1 text-xs font-medium text-rose-deep hover:underline">
+        Separar en unidades
+      </summary>
+      <form action={separarProducto} className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="producto" value={sep.id} />
+        <input type="hidden" name="envio" value={crypto.randomUUID()} />
+        <select name="origen" required aria-label="Lote y ubicación" className="rounded-lg border border-line bg-white px-3 py-2 text-sm">
+          {origenes.map((f) => (
+            <option key={f.id} value={`${f.lot?.id ?? ""}|${f.location.id}`}>
+              {f.lot ? `Lote ${f.lot.code}` : "Sin lote"} · {f.location.name} ({fmtQty(Number(f.quantity))})
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          name="cantidad"
+          min="1"
+          step="1"
+          required
+          placeholder={`Cant. ${sep.label}`}
+          aria-label={`Cantidad de ${sep.label} a separar`}
+          className="w-32 rounded-lg border border-line px-3 py-2 text-sm"
+        />
+        <SubmitButton
+          confirmar={`¿Confirmás? Se restan esos ${sep.label} y se suman ${sep.factor} ${destino} por cada uno, del mismo lote.`}
+          className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white"
+        >
+          Separar
+        </SubmitButton>
+      </form>
+      <p className="mt-1 text-xs text-soft">Cada {sep.label} se convierte en {sep.factor} × {destino}, con el mismo lote y vencimiento.</p>
+    </details>
+  );
+}
+
 function haceCuanto(iso: string): string {
   const min = Math.round((Date.now() - Date.parse(iso)) / 60000);
   if (min < 1) return "recién";
@@ -278,13 +319,38 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   if (historico) delete sp.disp; // el disponible de un día pasado no se puede saber (estados de lote cambian)
   const puedeAjustar = !historico && (user.role === "ADMIN" || user.role === "MANAGER");
   const puedeAbrir = !historico && can(user, "ingresos");
-  const [balances, locations, productos, reservados, wix] = await Promise.all([
+  const [balances, locations, productos, reservados, wix, separables] = await Promise.all([
     fecha ? getBalancesAt(fecha) : getBalances(),
     getLocations(),
     getProducts(),
     historico ? Promise.resolve(new Map<string, number>()) : getReservados(),
     historico ? Promise.resolve(null) : getEstadoWixStock(),
+    getSeparables(),
   ]);
+  // blister/pack sin separar: al lado de las unidades sueltas se muestra cuánto hay en blister
+  const nombreDe = new Map(productos.map((p) => [p.id, p.name]));
+  const separableDe = new Map(separables.map((x) => [x.id, x]));
+  const sinSeparar = (pid: string) =>
+    separables
+      .filter((x) => x.destino === pid)
+      .map((x) => ({ ...x, qty: balances.filter((b) => b.product.id === x.id).reduce((t, b) => t + Number(b.quantity), 0) }))
+      .filter((x) => x.qty > 0);
+  const Extras = ({ pid, filas }: { pid: string; filas: BalanceRow[] }) => {
+    const sep = separableDe.get(pid);
+    return (
+      <>
+        {sinSeparar(pid).map((x) => (
+          <div key={x.id} className="text-xs font-medium text-emerald-800">
+            + {fmtQty(x.qty)} {x.label} sin separar (= {fmtQty(x.qty * x.factor)} unidades)
+          </div>
+        ))}
+        {sep && !historico && (
+          <div className="text-xs text-soft">Se separa en {sep.factor} × {nombreDe.get(sep.destino) ?? "unidades"}</div>
+        )}
+        {sep && puedeAjustar && <SepararForm sep={sep} filas={filas} destino={nombreDe.get(sep.destino) ?? "unidades"} />}
+      </>
+    );
+  };
   const enWix = (pid: string) => !!wix?.activo && wix.productos.has(pid);
   // unidades reservadas por pedidos web (por producto, sumando sus ubicaciones)
   const reservadoDe = (pid: string, filas: { location: { id: string } }[]) =>
@@ -519,6 +585,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                   <div className="min-w-0">
                     <div className="text-sm font-medium">{g.product.name}{enWix(g.product.id) && <ChipWix />}</div>
                     <div className="font-mono text-xs text-soft">{g.product.sku}</div>
+                    <Extras pid={g.product.id} filas={g.filas} />
                   </div>
                   <span className="shrink-0 font-display text-3xl leading-none">
                     {fmtQty(g.total)} <span className="font-sans text-xs text-soft">{g.product.unit}</span>
@@ -563,6 +630,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <td className={td}>
                         {g.product.name}
                         {enWix(g.product.id) && <ChipWix />}
+                        <Extras pid={g.product.id} filas={g.filas} />
                         <DetalleFilas filas={g.filas} puedeAjustar={puedeAjustar} puedeAbrir={puedeAbrir} historico={historico} />
                       </td>
                       <td className={td}>

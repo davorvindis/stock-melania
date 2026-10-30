@@ -6,7 +6,7 @@ import { getPendientes } from "@/lib/preventa";
 import { cierresSinVer } from "@/lib/caja";
 import { contarPendientesCF } from "@/lib/caja-fuerte";
 import { getAvisosWix } from "@/lib/wix/queries";
-import { getBalances, getMovements, getCounts, isAvailable, enCajaCerrada } from "@/lib/queries";
+import { getBalances, getMovements, getCounts, getSeparables, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
 import { MovementCard, OrigenDestino } from "@/components/movement-card";
@@ -41,7 +41,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
   const veCierres = user.role === "ADMIN" && can(user, "caja");
   const vePedidos = can(user, "pedidos");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -51,6 +51,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     veCierres ? cierresSinVer(user.id) : Promise.resolve([]),
     veCierres ? contarPendientesCF() : Promise.resolve(0),
     vePedidos ? getAvisosWix() : Promise.resolve(null),
+    getSeparables(),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -75,6 +76,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     porProducto.set(b.product.id, cur);
   }
   const bajoMinimo = [...porProducto.values()].filter((p) => p.min > 0 && p.qty < p.min);
+  // blisters/packs sin separar de los que están bajo mínimo (ej. Monodosis Botox x1)
+  const sinSeparar = (sku: string) => {
+    const id = [...porProducto.entries()].find(([, v]) => v.sku === sku)?.[0];
+    return separables
+      .filter((x) => x.destino === id)
+      .map((x) => ({ ...x, qty: porProducto.get(x.id)?.qty ?? 0 }))
+      .filter((x) => x.qty > 0);
+  };
 
   // disponible por tipo de producto (para los filtros del gráfico)
   const totalPorTipo = new Map<string, { qty: number; productos: number }>();
@@ -289,6 +298,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               <li key={p.sku}>
                 <span className="font-medium">{p.name}</span> ({p.sku}): disponible{" "}
                 <span className="font-semibold text-red-700">{fmtQty(p.qty)}</span> / mínimo {fmtQty(p.min)}
+                {sinSeparar(p.sku).map((x) => (
+                  <span key={x.id} className="text-emerald-800">
+                    {" "}(+ {fmtQty(x.qty)} {x.label} sin separar: separá desde Stock)
+                  </span>
+                ))}
               </li>
             ))}
           </ul>

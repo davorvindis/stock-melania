@@ -888,6 +888,30 @@ export async function ajustarStock(formData: FormData) {
   okRedirect("/stock", "Stock ajustado (quedó registrado como movimiento de ajuste)");
 }
 
+// ── Separar blisters/packs en unidades (mismo lote y vencimiento) ──
+
+export async function separarProducto(formData: FormData) {
+  const user = await requireRole("ADMIN", "MANAGER");
+  const back = "/stock";
+  const productId = uuid.safeParse(String(formData.get("producto") ?? ""));
+  const [lotId, locationId] = String(formData.get("origen") ?? "").split("|");
+  const cantidad = Number(formData.get("cantidad"));
+  if (!productId.success || !locationId) backWithError(back, "Elegí de qué lote y ubicación se separa");
+  if (!Number.isInteger(cantidad) || cantidad <= 0) backWithError(back, "Indicá cuántos se separan (número entero)");
+  exigirUbicacion(user, locationId, back);
+  const { data, error } = await db().rpc("split_product", {
+    p_product: productId.data,
+    p_lot: lotId || null,
+    p_location: locationId,
+    p_qty: cantidad,
+    p_actor: user.alias,
+    p_idem: String(formData.get("envio") ?? "") || null,
+  });
+  if (error) backWithError(back, error.message);
+  const r = data as { separados?: number; unidades?: number; repeated?: boolean };
+  okRedirect("/stock", r.repeated ? "Esa separación ya estaba cargada" : `Separado: ${r.separados} → ${r.unidades} unidades (mismo lote y vencimiento)`);
+}
+
 // ── Eliminar producto (solo sin historial; con historial se desactiva) ──
 
 export async function eliminarProducto(formData: FormData) {

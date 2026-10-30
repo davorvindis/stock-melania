@@ -160,6 +160,24 @@ export async function getProducts() {
   return data ?? [];
 }
 
+// productos que vienen en blister/pack y se separan en unidades de otro producto
+export type Separable = { id: string; name: string; label: string; factor: number; destino: string };
+
+export async function getSeparables(): Promise<Separable[]> {
+  const { data, error } = await db()
+    .from("products")
+    .select("id, name, split_label, split_factor, split_into_product_id")
+    .not("split_into_product_id", "is", null);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    label: p.split_label ?? p.name,
+    factor: Number(p.split_factor),
+    destino: p.split_into_product_id as string,
+  }));
+}
+
 export async function getLocations() {
   const { data, error } = await db()
     .from("locations")

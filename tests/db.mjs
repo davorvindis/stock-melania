@@ -35,6 +35,8 @@ export async function enTransaccion(fn) {
     await c.query("begin");
     // que un test trabado nunca frene a producción
     await c.query("set local lock_timeout = '5s'; set local statement_timeout = '30s'");
+    // probar una migración todavía no aplicada: TEST_SQL=supabase/migrations/xxx.sql npm test
+    if (process.env.TEST_SQL) await c.query(readFileSync(process.env.TEST_SQL, "utf8"));
     await fn(new Ayuda(c));
   } finally {
     await c.query("rollback").catch(() => {});
