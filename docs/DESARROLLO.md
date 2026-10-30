@@ -53,6 +53,8 @@ supabase/migrations/   schema versionado
 3. `npm run build` antes de pushear (corre TypeScript + lint).
 4. `git push` → Vercel deploya solo (~1 min). Rollback: Vercel → Deployments → Promote anterior, o `git revert` + push.
 5. Probar lógica SQL sin ensuciar datos: en `psql`, envolver en `begin; ... rollback;`.
+6. **Tests automáticos** (`npm test`, en `tests/`): ledger, armado de pedidos Wix y reembolsos contra la base real, cada test dentro de una transacción que siempre se deshace (crean su propio producto `TEST-…`, equivalencia y pedido; no queda nada). Toman la contraseña de `.env.local`; sin ella se saltean. Al cambiar una función SQL crítica, agregá o ajustá su test.
+7. **Hook pre-push** (`.githooks/pre-push`): corre `npm test` y `npm run build` antes de cada push y lo frena si algo falla. Activarlo una vez por compu con `git config core.hooksPath .githooks`. Emergencia: `git push --no-verify`.
 
 Conexión psql directa (el host db.*.supabase.co no resuelve; usar pooler):
 `psql "postgresql://postgres.kpybwbjhiitezthammhz:$SUPABASE_DB_PASSWORD@aws-0-sa-east-1.pooler.supabase.com:5432/postgres"`

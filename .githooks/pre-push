@@ -1,0 +1,11 @@
+#!/bin/sh
+# Antes de cada push a GitHub (que deploya a Vercel): tests de la base y build.
+# Los tests corren en transacciones que se deshacen: no dejan nada en la base.
+# Activarlo una vez por compu:  git config core.hooksPath .githooks
+# Saltearlo en una emergencia:  git push --no-verify
+set -e
+echo "pre-push: tests (npm test)…"
+npm test --silent
+echo "pre-push: build (npm run build)…"
+npm run build --silent > /dev/null
+echo "pre-push: todo OK"
