@@ -11,5 +11,6 @@ Antes de cualquier cambio leé `docs/DESARROLLO.md` (onboarding, reglas de oro, 
 - Autorización server-side (`requireSection`/`requireRole`) en cada página y action; RLS deniega acceso directo; service role solo en servidor.
 - Local usa la MISMA base que producción: probar lógica SQL en transacciones con rollback; no crear datos de prueba sueltos.
 - UI en español (es-AR), mobile-first (tarjetas en mobile, tablas en desktop), tokens de marca en `globals.css`.
+- **Manual de uso en la app** (`/manual`, contenido en `src/lib/manual/contenido.ts`): toda mejora que cambie cómo se usa la app actualiza su parte del manual en el mismo commit, marcada con la pestaña/rol que hace falta para verla (`ver`). Cada usuario ve solo lo que tiene habilitado.
 - `npm run build` debe pasar antes de pushear; push a `main` deploya solo a Vercel.
 - Nunca subir `.env*` ni exponer claves; nunca deshabilitar triggers/RLS como atajo.

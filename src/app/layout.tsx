@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { Bebas_Neue, Montserrat } from "next/font/google";
 import { Nav } from "@/components/nav";
 import { SinRuedaEnNumeros } from "@/components/sin-rueda-en-numeros";
@@ -43,6 +44,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <span className="font-display text-2xl leading-none text-ink">Stock</span>
                   </div>
                   <form action={logout} className="flex items-center gap-2">
+                    <Link
+                      href="/manual"
+                      className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-soft hover:bg-blush-100 hover:text-ink"
+                    >
+                      Manual
+                    </Link>
                     <span className="text-sm text-soft">
                       <span className="hidden sm:inline">{user.alias}</span>
                       {ubicacion && <span className="ml-1 text-xs">📍 {ubicacion}</span>}

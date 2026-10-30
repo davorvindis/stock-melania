@@ -54,6 +54,7 @@ supabase/migrations/   schema versionado
 4. `git push` → Vercel deploya solo (~1 min). Rollback: Vercel → Deployments → Promote anterior, o `git revert` + push.
 5. Probar lógica SQL sin ensuciar datos: en `psql`, envolver en `begin; ... rollback;`.
 6. **Tests automáticos** (`npm test`, en `tests/`): ledger, armado de pedidos Wix y reembolsos contra la base real, cada test dentro de una transacción que siempre se deshace (crean su propio producto `TEST-…`, equivalencia y pedido; no queda nada). Toman la contraseña de `.env.local`; sin ella se saltean. Al cambiar una función SQL crítica, agregá o ajustá su test.
+8. **Manual de uso** (`/manual`): el texto vive en `src/lib/manual/contenido.ts`. Cada capítulo, bloque, ítem o fila puede llevar `ver: { s: [pestañas], r: [roles], fija }` y cada usuario ve solo lo que cumple (se filtra con los mismos permisos de Configuración). Una mejora no está terminada si no actualiza su parte del manual y la fecha `ACTUALIZADO`. Los administradores pueden ver el manual "como" otra persona.
 7. **Hook pre-push** (`.githooks/pre-push`): corre `npm test` y `npm run build` antes de cada push y lo frena si algo falla. Activarlo una vez por compu con `git config core.hooksPath .githooks`. Emergencia: `git push --no-verify`.
 
 Conexión psql directa (el host db.*.supabase.co no resuelve; usar pooler):
