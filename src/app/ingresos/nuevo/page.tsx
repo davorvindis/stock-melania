@@ -47,6 +47,12 @@ export default async function NuevoIngreso({
       }`,
     }));
   const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  // productos cuyo remito viene en otra unidad (ej. el laboratorio cuenta blisters y nosotros pares)
+  const conversiones = Object.fromEntries(
+    catalogo
+      .filter((p) => p.purchase_unit && p.purchase_factor)
+      .map((p) => [p.id, { remito: p.purchase_unit as string, factor: Number(p.purchase_factor), nuestra: p.unit || "unidad" }])
+  );
   const opcionesProductos = catalogo.map((p) => ({ value: p.id, label: `${p.name} · ${p.sku} · ${p.unit}` }));
 
   return (
@@ -114,7 +120,7 @@ export default async function NuevoIngreso({
 
           <div>
             <label className={label}>Productos *</label>
-            <LineasIngreso productos={opcionesProductos} inicial={inicial} />
+            <LineasIngreso productos={opcionesProductos} inicial={inicial} conversiones={conversiones} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

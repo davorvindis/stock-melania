@@ -132,6 +132,7 @@ export const MANUAL: Capitulo[] = [
         "Si la mercadería viene de una **orden de compra**, se recibe desde la orden con **Recibir mercadería**.",
         "Los kits no se ingresan: se arman desde Productos.",
       ]),
+      A("Algunos productos vienen del laboratorio en otra unidad. **MONODOSIS 1 y 2**: el remito cuenta **blisters** y nosotros **pares** (1 blister = 2 pares). Al elegir el producto aparece un recuadro amarillo: poné lo que dice el remito (por ejemplo 30.000 blisters) y el sistema carga solo los pares (60.000). El costo unitario va por par (precio del blister ÷ 2).", "Ojo con la unidad del remito", "ambar"),
     ],
   },
   {
@@ -449,6 +450,7 @@ export const MANUAL: Capitulo[] = [
       S("Una clienta pide reembolso", [P("Devolver la plata en Wix y en Melania tocar **Reembolso** en el pedido, eligiendo si el producto vuelve o no. Si es del POS: **Volvió al Store** o **No volvió**.")], ENCARGADA),
       S("Algo figura Agotado en la web pero lo tenemos", [P("Falta cargarlo en Melania: Nuevo ingreso, o avisar a Yura para que ajuste. En minutos vuelve a estar a la venta.")], { s: ["stock"] }),
       S("Llegó mercadería", [P("**Nuevo ingreso** con todos los productos del remito, lote y vencimiento, y las fotos del remito y la factura.")], { s: ["ingresos"] }),
+      S("Llegaron MONODOSIS 1 y 2 del laboratorio", [P("Nuevo ingreso → elegí *MONODOSIS 1 y 2* → en el recuadro amarillo poné lo que dice el remito en blisters → el sistema carga el doble en pares. Nunca cargues el número del remito directo en Cantidad.")], { s: ["ingresos"] }),
       S("Guardar una caja sin abrir", [P("Al cargar el ingreso tildá **Mantener caja cerrada**. Cuando se abra, tocá **Abrir caja** en Stock o en la ficha del lote.")], { s: ["ingresos"] }),
       S("Se terminaron las monodosis sueltas y hay que abrir una caja de blisters", [P("Stock → producto en blister → **Separar en unidades** → lote, ubicación y cantidad → Separar. Nunca cargarlas como ingreso.")], ENCARGADA),
       S("Se terminaron las monodosis sueltas y hay que abrir una caja de blisters", [P("Avisale a Yura para que lo cargue con **Separar en unidades**.")], { r: ["OPERATOR"], s: ["stock"] }),

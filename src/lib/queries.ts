@@ -154,7 +154,7 @@ export async function getMovements(limit = 100): Promise<MovementRow[]> {
 export async function getProducts() {
   const { data, error } = await db()
     .from("products")
-    .select("id, sku, name, category, unit, type, min_stock, active")
+    .select("id, sku, name, category, unit, type, min_stock, active, purchase_unit, purchase_factor")
     .order("sku");
   if (error) throw new Error(error.message);
   return data ?? [];

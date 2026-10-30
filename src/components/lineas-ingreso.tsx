@@ -4,6 +4,33 @@ import { useState } from "react";
 import { BuscadorProducto, type OpcionBuscador } from "@/components/buscador-producto";
 
 type Linea = { key: number; producto: string; cantidad: string; costo: string; ocLinea?: string; detalle?: string; lote?: string; cerrada?: boolean };
+// el remito cuenta en otra unidad: se carga lo que dice el remito y se calcula lo nuestro
+function ConversionRemito({ conv, cantidad, onCantidad }: { conv: Conversion; cantidad: string; onCantidad: (c: string) => void }) {
+  const remito = Number(cantidad) > 0 ? String(Number(cantidad) / conv.factor) : "";
+  return (
+    <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <b>Ojo con la unidad:</b> el remito cuenta {conv.remito} y acá se carga en {plural(conv.nuestra)}: 1 {conv.remito.replace(/s$/, "")} = {conv.factor}{" "}
+      {plural(conv.nuestra)}.
+      <label className="mt-2 flex flex-wrap items-center gap-2">
+        <span>El remito dice</span>
+        <input
+          type="number"
+          min="0"
+          step="any"
+          value={remito}
+          onChange={(e) => onCantidad(e.target.value ? String(Number(e.target.value) * conv.factor) : "")}
+          className="w-32 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-base"
+          aria-label={`Cantidad del remito en ${conv.remito}`}
+        />
+        <span>
+          {conv.remito} → se cargan <b>{Number(cantidad) > 0 ? Number(cantidad).toLocaleString("es-AR") : "—"} {plural(conv.nuestra)}</b>
+        </span>
+      </label>
+      <span className="mt-1 block text-xs">El costo unitario va por {conv.nuestra} (precio del {conv.remito.replace(/s$/, "")} ÷ {conv.factor}).</span>
+    </div>
+  );
+}
+
 export type LineaInicial = Omit<Linea, "key" | "lote" | "cerrada">;
 
 const campo =
@@ -15,7 +42,19 @@ const pesos = (n: number) =>
 
 // Líneas del ingreso: un remito puede traer varios productos. Los inputs usan
 // nombres repetidos (ing_*) y el server los lee en orden con getAll.
-export function LineasIngreso({ productos, inicial }: { productos: OpcionBuscador[]; inicial?: LineaInicial[] }) {
+export type Conversion = { remito: string; factor: number; nuestra: string }; // nuestra: unidad del producto en singular (ej. par)
+
+const plural = (u: string) => (/s$/.test(u) ? u : /[aeiou]$/.test(u) ? `${u}s` : `${u}es`);
+
+export function LineasIngreso({
+  productos,
+  inicial,
+  conversiones = {},
+}: {
+  productos: OpcionBuscador[];
+  inicial?: LineaInicial[];
+  conversiones?: Record<string, Conversion>;
+}) {
   const [lineas, setLineas] = useState<Linea[]>(
     inicial?.length ? inicial.map((l, i) => ({ ...l, key: i })) : [{ key: 0, producto: "", cantidad: "", costo: "" }]
   );
@@ -58,6 +97,13 @@ export function LineasIngreso({ productos, inicial }: { productos: OpcionBuscado
             onChange={(v) => set(linea.key, { producto: v })}
             placeholder="Buscar producto o SKU…"
           />
+          {conversiones[linea.producto] && (
+            <ConversionRemito
+              conv={conversiones[linea.producto]}
+              cantidad={linea.cantidad}
+              onCantidad={(c) => set(linea.key, { cantidad: c })}
+            />
+          )}
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div>
               <label className={etiqueta}>Cantidad *</label>
