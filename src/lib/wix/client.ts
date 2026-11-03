@@ -97,7 +97,8 @@ export type PedidoNormalizado = {
   ordered_at: string | null;
   updated_at: string | null;
   raw: WixOrder;
-  items: { line_id: string; sku: string | null; name: string | null; quantity: number; unit_price: number | null }[];
+  // producto y variante de Wix: si la venta llegó sin SKU, se busca la equivalencia por acá
+  items: { line_id: string; sku: string | null; name: string | null; quantity: number; unit_price: number | null; wix_product_id: string | null; wix_variant_id: string }[];
 };
 
 // servicios (turnos de Wix Bookings): no son productos, no mueven stock
@@ -134,6 +135,8 @@ export function normalizarPedido(o: WixOrder): PedidoNormalizado {
       name: li.productName?.original ?? li.productName?.translated ?? null,
       quantity: Number(li.quantity),
       unit_price: li.price?.amount != null ? Number(li.price.amount) : null,
+      wix_product_id: li.catalogReference?.catalogItemId ?? null,
+      wix_variant_id: li.catalogReference?.options?.variantId ?? VARIANTE_UNICA,
     })),
   };
 }

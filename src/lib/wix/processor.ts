@@ -62,6 +62,20 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   if (soloServicios(o)) return "ignorado:solo-servicios";
   const n: PedidoNormalizado = normalizarPedido(o);
   const cli = db();
+  // productos de Wix sin SKU cargado (o vendidos antes de cargarlo): el SKU sale del mapeo del catálogo
+  const sinSku = n.items.filter((i) => !i.sku && i.wix_product_id);
+  if (sinSku.length) {
+    const m = await cli
+      .from("channel_skus")
+      .select("external_sku, wix_product_id, wix_variant_id")
+      .eq("active", true)
+      .in("wix_product_id", [...new Set(sinSku.map((i) => i.wix_product_id!))]);
+    if (m.error) throw new Error(m.error.message);
+    for (const i of sinSku) {
+      const c = (m.data ?? []).filter((e) => e.wix_product_id === i.wix_product_id && e.wix_variant_id === i.wix_variant_id);
+      if (c.length === 1) i.sku = c[0].external_sku; // si hay más de una, no se adivina
+    }
+  }
   // ya despachado / retirado: lo que había antes de esta lectura, para detectar ediciones en Wix
   const previo = await cli
     .from("channel_orders")
@@ -527,6 +541,13 @@ export async function reintentarSinEquivalencia(skus: string[], actor: string): 
   return Number(data ?? 0);
 }
 
+// ventas que llegaron sin SKU: con el producto ya mapeado se completa el SKU y se reservan
+export async function completarSkusPorProducto(actor: string): Promise<number> {
+  const { data, error } = await db().rpc("wix_fill_missing_skus", { p_actor: actor });
+  if (error) throw new Error(error.message);
+  return Number(data ?? 0);
+}
+
 // ── Mapear catálogo de Wix ↔ equivalencias ──────────────────────────
 
 export async function mapearCatalogo(actor: string): Promise<{ version: string; mapeados: number; faltanEnWix: string[]; sobranEnWix: string[]; creadas: string[]; pedidos: number; sinSeguimiento: number }> {
@@ -594,7 +615,7 @@ export async function mapearCatalogo(actor: string): Promise<{ version: string; 
     }
   }
   const sobran = enWix.filter((s) => !nuestros.has(s.sku.toUpperCase())).map((s) => s.sku);
-  const pedidos = await reintentarSinEquivalencia(creadas, actor);
+  const pedidos = (await reintentarSinEquivalencia(creadas, actor)) + (await completarSkusPorProducto(actor));
   await patchWixSettings({ catalog_version: version }, actor);
   await cli.from("audit_logs").insert({ actor, action: "wix:map_catalog", entity: "channel_skus", entity_id: null, detail: { version, mapeados, faltan, sobran, creadas, pedidos } });
   return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, creadas, pedidos, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };

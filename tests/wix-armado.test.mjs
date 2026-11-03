@@ -161,3 +161,26 @@ test("equivalencia cargada después: el pedido pagado se reserva solo y conserva
     // el impago no se toca
     assert.equal((await t.pedidoEstado(impago.id)).state, "NEW");
   }));
+
+test("venta sin SKU en Wix: con el producto ya mapeado se completa el SKU y se reserva", { skip: sinBase }, () =>
+  enTransaccion(async (t) => {
+    const { deposito } = await t.ubicaciones();
+    const p = await t.producto({ stock: { [deposito]: 10 } });
+    const sku = await t.equivalencia([{ producto: p, cantidad: 1 }]);
+    const wixProd = randomUUID();
+    const wixVar = randomUUID();
+    await t.c.query(`update channel_skus set wix_product_id = $2, wix_variant_id = $3 where external_sku = $1`, [sku, wixProd, wixVar]);
+    const o = await t.pedido({ items: [{ sku: null, nombre: "Producto sin SKU en Wix", cantidad: 2 }] });
+    await t.c.query(
+      `update channel_orders set raw = raw || $2 where id = $1`,
+      [o.id, { lineItems: [{ id: "linea-1", catalogReference: { catalogItemId: wixProd, options: { variantId: wixVar } } }] }]
+    );
+    await t.filas(`select wix_reserve_order($1, 'test')`, [o.id]);
+    assert.match((await t.pedidoEstado(o.id)).review_reason, /Sin equivalencia: Producto sin SKU en Wix/);
+    assert.ok((await t.valor(`select wix_fill_missing_skus('test')`)) >= 1);
+    const e = await t.pedidoEstado(o.id);
+    assert.equal(e.state, "RESERVED");
+    assert.equal(e.review_reason, null);
+    assert.equal((await t.items(o.id))[0].external_sku, sku);
+    assert.equal(await t.disponible(p.id, deposito), 8);
+  }));
