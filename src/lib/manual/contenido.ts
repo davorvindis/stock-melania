@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "30 de octubre de 2026";
+export const ACTUALIZADO = "3 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -430,6 +430,7 @@ export const MANUAL: Capitulo[] = [
       L([
         "**Equivalencias Wix:** qué productos de Stock Melania descuenta cada SKU de Wix (incluye packs y combos). Cada producto o combo nuevo necesita su SKU en Wix y su equivalencia; si no, la venta cae en **Sin descontar**.",
         solo("**Producto nuevo con el mismo SKU en Wix y en Melania:** no hace falta crear la equivalencia. En Integración Wix tocá **Mapear catálogo de Wix**: la crea sola (1 a 1) y publica el stock en el momento. Los packs, combos y SKU que no coinciden se siguen armando a mano en Equivalencias.", ADMIN),
+        "**Pedidos que esperaban la equivalencia:** si entró una venta antes de cargar (o reactivar) la equivalencia, al guardarla el pedido se reserva solo y sale de **A revisar**; el mensaje dice cuántos pedidos se acomodaron. Los que ya salieron (despachados o retirados) no se tocan.",
         "**Publicar stock en Wix:** marca qué SKU reciben el stock de Melania; los internos \"MAYORISTA\" no lo reciben.",
         "**Integración Wix:** conexión, opciones (publicar el disponible, activar seguimiento), **Publicar todo el disponible**, **Conciliar stock con Wix** y últimos eventos.",
       ]),

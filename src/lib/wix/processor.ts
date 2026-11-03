@@ -519,9 +519,17 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
   return { skus, errores, omitidos };
 }
 
+// equivalencia nueva (o reactivada): los pedidos pagados que esperaban ese SKU se reservan ya
+export async function reintentarSinEquivalencia(skus: string[], actor: string): Promise<number> {
+  if (skus.length === 0) return 0;
+  const { data, error } = await db().rpc("wix_retry_missing_skus", { p_skus: skus, p_actor: actor });
+  if (error) throw new Error(error.message);
+  return Number(data ?? 0);
+}
+
 // ── Mapear catálogo de Wix ↔ equivalencias ──────────────────────────
 
-export async function mapearCatalogo(actor: string): Promise<{ version: string; mapeados: number; faltanEnWix: string[]; sobranEnWix: string[]; creadas: string[]; sinSeguimiento: number }> {
+export async function mapearCatalogo(actor: string): Promise<{ version: string; mapeados: number; faltanEnWix: string[]; sobranEnWix: string[]; creadas: string[]; pedidos: number; sinSeguimiento: number }> {
   const version = await getCatalogVersion();
   const enWix = version === "V3_CATALOG" ? await listarSkusV3() : await listarSkusV1();
   const porSku = new Map(enWix.map((s) => [s.sku.toUpperCase(), s]));
@@ -586,9 +594,10 @@ export async function mapearCatalogo(actor: string): Promise<{ version: string; 
     }
   }
   const sobran = enWix.filter((s) => !nuestros.has(s.sku.toUpperCase())).map((s) => s.sku);
+  const pedidos = await reintentarSinEquivalencia(creadas, actor);
   await patchWixSettings({ catalog_version: version }, actor);
-  await cli.from("audit_logs").insert({ actor, action: "wix:map_catalog", entity: "channel_skus", entity_id: null, detail: { version, mapeados, faltan, sobran, creadas } });
-  return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, creadas, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };
+  await cli.from("audit_logs").insert({ actor, action: "wix:map_catalog", entity: "channel_skus", entity_id: null, detail: { version, mapeados, faltan, sobran, creadas, pedidos } });
+  return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, creadas, pedidos, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };
 }
 
 // ── Conciliación diaria de inventario ───────────────────────────────

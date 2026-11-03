@@ -136,3 +136,28 @@ test("el método de entrega se calcula para filtrar y ordenar Para armar", { ski
       assert.equal(await t.valor(`select delivery_rank from channel_orders where id = $1`, [o.id]), rango, `${envio} / ${canal}`);
     }
   }));
+
+test("equivalencia cargada después: el pedido pagado se reserva solo y conserva sus otros avisos", { skip: sinBase }, () =>
+  enTransaccion(async (t) => {
+    const { deposito } = await t.ubicaciones();
+    const a = await t.producto({ stock: { [deposito]: 10 } });
+    const b = await t.producto({ stock: { [deposito]: 10 } });
+    const conEq = await t.equivalencia([{ producto: a, cantidad: 1 }]);
+    const nuevo = `TEST-WIX-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const o = await t.pedido({ items: [{ sku: conEq, cantidad: 1 }, { sku: nuevo, cantidad: 2 }] });
+    const impago = await t.pedido({ items: [{ sku: nuevo, cantidad: 1 }] });
+    await t.c.query(`update channel_orders set payment_status = 'NOT_PAID' where id = $1`, [impago.id]);
+    await t.filas(`select wix_reserve_order($1, 'test')`, [o.id]);
+    await t.filas(`select _wix_append_review($1, 'Reembolso parcial en Wix: revisar qué se devuelve')`, [o.id]);
+    assert.match((await t.pedidoEstado(o.id)).review_reason, /Sin equivalencia/);
+    // se carga la equivalencia que faltaba (en minúsculas: el SKU se compara sin mayúsculas)
+    const id = await t.valor(`insert into channel_skus (channel, external_sku, active, publish_stock) values ('WIX', $1, true, true) returning id`, [nuevo]);
+    await t.c.query(`insert into channel_sku_lines (channel_sku_id, product_id, quantity) values ($1, $2, 1)`, [id, b.id]);
+    assert.equal(await t.valor(`select wix_retry_missing_skus($1, 'test')`, [[nuevo.toLowerCase()]]), 1);
+    const e = await t.pedidoEstado(o.id);
+    assert.equal(e.state, "RESERVED");
+    assert.equal(e.review_reason, "Reembolso parcial en Wix: revisar qué se devuelve");
+    assert.equal(await t.disponible(b.id, deposito), 8);
+    // el impago no se toca
+    assert.equal((await t.pedidoEstado(impago.id)).state, "NEW");
+  }));

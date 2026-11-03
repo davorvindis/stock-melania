@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "./db";
 import { requireSection } from "./auth";
+import { reintentarSinEquivalencia } from "./wix/processor";
 
 function volverConError(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`);
@@ -63,7 +64,10 @@ export async function guardarEquivalencia(formData: FormData) {
   if (error) volverConError(back, error.message);
   // los MAYORISTA (marcadores internos de Wix) no reciben stock
   await db().from("channel_skus").update({ publish_stock: formData.get("publicar") === "si" }).eq("id", data as string);
-  volverOk(id ? `/equivalencias/${id}` : `/equivalencias?q=${encodeURIComponent(d.sku)}`, id ? "Equivalencia actualizada" : `Equivalencia ${d.sku} creada`);
+  // pedidos pagados que esperaban este SKU: se reservan ya y sale el aviso de "Sin equivalencia"
+  const pedidos = formData.get("activa") !== "no" ? await reintentarSinEquivalencia([d.sku], user.alias).catch(() => 0) : 0;
+  const extra = pedidos ? `. ${pedidos} pedido(s) que la esperaban quedaron reservados` : "";
+  volverOk(id ? `/equivalencias/${id}` : `/equivalencias?q=${encodeURIComponent(d.sku)}`, (id ? "Equivalencia actualizada" : `Equivalencia ${d.sku} creada`) + extra);
   return data;
 }
 
@@ -84,5 +88,11 @@ export async function cambiarEstadoEquivalencia(formData: FormData) {
     entity: "channel_skus",
     entity_id: id.data,
   });
-  volverOk(`/equivalencias/${id.data}`, activa ? "Equivalencia activada" : "Equivalencia desactivada: las ventas de ese SKU no van a descontar");
+  let extra = "";
+  if (activa) {
+    const { data: eq } = await db().from("channel_skus").select("external_sku").eq("id", id.data).single();
+    const pedidos = eq ? await reintentarSinEquivalencia([eq.external_sku], user.alias).catch(() => 0) : 0;
+    if (pedidos) extra = `. ${pedidos} pedido(s) que la esperaban quedaron reservados`;
+  }
+  volverOk(`/equivalencias/${id.data}`, activa ? `Equivalencia activada${extra}` : "Equivalencia desactivada: las ventas de ese SKU no van a descontar");
 }
