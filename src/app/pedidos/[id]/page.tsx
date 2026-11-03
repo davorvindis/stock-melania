@@ -30,6 +30,16 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   // armado y listo: falta que salga (despacho o retiro por el local); el botón principal sigue el método de Wix
   const puedeEntregar = p.state === "PROCESSED" && p.channel_type !== "POS" && !p.delivery_status && aSacar.length === 0;
   const esRetiro = metodoEntrega(p).clave === "RETIRO";
+  const envioWix = ({ MOTO: "MOTOMENSAJERÍA", CORREO: "CORREO ARGENTINO" } as Record<string, string>)[metodoEntrega(p).clave];
+  // si el botón no coincide con cómo se cargó el pedido en Wix, el cartel lo avisa fuerte
+  const confirmarEntrega = (e: "DISPATCHED" | "PICKED_UP") =>
+    e === "DISPATCHED" && esRetiro
+      ? "ATENCIÓN: este pedido está cargado en Wix como RETIRO EN SUCURSAL (la clienta lo pasa a buscar por el local).\n\n¿Seguro que querés marcarlo como DESPACHADO?\n\nSi la clienta lo retiró, tocá Cancelar y usá \"Marcar como retirado\"."
+      : e === "PICKED_UP" && envioWix
+        ? `ATENCIÓN: este pedido está cargado en Wix para ENVÍO POR ${envioWix}.\n\n¿Seguro que querés marcarlo como RETIRADO?\n\nSi salió por correo o moto, tocá Cancelar y usá "Marcar como despachado".`
+        : e === "DISPATCHED"
+          ? "¿Confirmás que el pedido salió (despachado)?"
+          : "¿Confirmás que la clienta lo retiró?";
   // reembolso en el POS de una venta ya descontada: lo resuelve quien está en el local
   const reembolsoPos =
     p.channel_type === "POS" && p.state === "PROCESSED" && !p.refund_resolution && (p.payment_status === "FULLY_REFUNDED" || p.wix_status === "CANCELED");
@@ -262,7 +272,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                 <input type="hidden" name="id" value={p.id} />
                 <input type="hidden" name="entrega" value={e} />
                 <SubmitButton
-                  confirmar={e === "DISPATCHED" ? "¿Confirmás que el pedido salió (despachado)?" : "¿Confirmás que la clienta lo retiró?"}
+                  confirmar={confirmarEntrega(e)}
                   className={
                     i === 0
                       ? "rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper"
@@ -278,6 +288,11 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           <p className="mt-2 text-xs text-soft">
             Despachado: salió por Correo Argentino, moto o se llevó a algún lugar. Retirado: la clienta lo pasó a buscar por el local.
           </p>
+          {(esRetiro || envioWix) && (
+            <p className="mt-1 text-xs font-medium text-emerald-900">
+              En Wix se cargó {esRetiro ? "para retirar por el local" : `para envío por ${envioWix === "MOTOMENSAJERÍA" ? "moto" : "Correo Argentino"}`}: si la clienta cambió de idea, el sistema te va a pedir que lo confirmes.
+            </p>
+          )}
         </Card>
       )}
       {!puedeEntregar && puedeReembolsar && <Card className="mt-3">{panelReembolso}</Card>}

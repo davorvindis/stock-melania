@@ -240,6 +240,7 @@ export const MANUAL: Capitulo[] = [
           "Tocá **Marcar como procesado (armado)**. Recién ahí se **descuenta del stock**, primero el lote que vence antes, y quedás registrado como responsable. Wix marca el pedido como procesado solo y, si cargaste el seguimiento, la clienta recibe el email con el número.",
           "Si **falta algún producto**, bajá esa cantidad antes de confirmar: se arma lo que hay y el resto sigue reservado.",
           "Cuando el paquete **sale del local**, tocá **Marcar como despachado** o **Marcar como retirado**. El sistema pregunta **\"¿Confirmás?\"** para que no se toque por error.",
+          "Si el botón no coincide con cómo se cargó el pedido en Wix (por ejemplo, **Retiro en sucursal** y tocás **Despachado**, o **Correo/Moto** y tocás **Retirado**), sale un cartel de **ATENCIÓN** para confirmarlo. Si la clienta cambió de idea, confirmá; si te equivocaste de botón, cancelá.",
         ]),
         P("La lista muestra **50 pedidos por página** (**← Anterior / Siguiente →** abajo) y se puede filtrar por estado, canal, método de entrega, fechas y con el buscador (N° de pedido, clienta o email). Marcar despachado o retirado **no mueve stock**."),
         P("Si alguien lo marca despachado o retirado por error, tocá **Deshacer** y vuelve a Procesado.", ENCARGADA),
