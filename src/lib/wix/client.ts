@@ -177,7 +177,7 @@ export async function searchOrdersCreados(desdeIso: string, hastaIso: string, cu
     ? { search: { cursorPaging: { cursor, limit: 100 } } }
     : {
         search: {
-          filter: { createdDate: { $gte: desdeIso, $lt: hastaIso } },
+          filter: { createdDate: { $gte: desdeIso } }, // Wix no acepta $gte y $lt juntos: el tope se corta acá
           sort: [{ fieldName: "createdDate", order: "ASC" }],
           cursorPaging: { limit: 100 },
         },
@@ -186,7 +186,10 @@ export async function searchOrdersCreados(desdeIso: string, hastaIso: string, cu
     "/ecom/v1/orders/search",
     { body }
   );
-  return { orders: r.orders ?? [], next: r.metadata?.hasNext ? r.metadata.cursors?.next : undefined };
+  const todos = r.orders ?? [];
+  const orders = todos.filter((o) => (o.createdDate ?? "") < hastaIso);
+  const llego = orders.length < todos.length; // vienen en orden: pasado el tope no hace falta seguir
+  return { orders, next: !llego && r.metadata?.hasNext ? r.metadata.cursors?.next : undefined };
 }
 
 // seguimiento de Correo Argentino: no es un proveedor predefinido de Wix, el link se pasa a mano
