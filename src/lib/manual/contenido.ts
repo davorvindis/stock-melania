@@ -317,13 +317,15 @@ export const MANUAL: Capitulo[] = [
   {
     id: "forecast",
     titulo: "Forecast (cuándo y cuánto comprar)",
-    ver: { s: ["compras"] },
+    ver: { s: ["forecast"] },
     bloques: [
-      P("**Para qué sirve:** con lo que se viene vendiendo, prevé hasta cuándo alcanza cada producto y te dice cuándo hacer la orden de compra y más o menos cuántas unidades pedir. Está en **Ventas → Forecast**."),
+      P("**Para qué sirve:** análisis de gerencia (lo ven solo quienes tienen el permiso Forecast). Con lo que se viene vendiendo, prevé hasta cuándo alcanza cada producto y te dice cuándo hacer la orden de compra y más o menos cuántas unidades pedir. Está en **Ventas → Forecast**."),
       L([
         "Arriba ves cuántos productos están **Sin stock**, **Falta hasta que llegue** (se acaba antes de que llegue lo que ya está pedido: conviene adelantar la entrega), para **Pedir ya**, para **Pedir pronto** (en las próximas 2 semanas) y **Bien**. Tocá una tarjeta para ver esos productos.",
         "Arriba van los productos de **Fabricación propia** (monodosis, Pro Glue, Pro Lash, Lash One, Elixir, Hidraluxe, Easy gel, Perm, Setting y Mousse): se ven siempre y te dice cuándo y cuánto **fabricar**. Debajo, **los que compramos**, solo los que hay que pedir. Con el filtro ves todos, o por categoría, o buscás uno.",
         "Para marcar o desmarcar un producto como propio: **Productos** → abrir el producto → tilde **Fabricación propia**.",
+        "**Preventas:** lo prevendido que falta entregar (pestaña Preventa) se descuenta del stock: lo que llega primero paga las preventas y recién después queda para vender. Se ve como \"prevendido\" debajo del stock libre.",
+        "**Ventas por semana a mano:** si sabés que un producto se va a vender distinto de lo que muestra la historia (por ejemplo, faltó stock y se vendió menos), cargá abajo cuánto esperás vender por semana. El Forecast usa ese número (dice \"cargado a mano\") hasta que lo quites.",
         "**Monodosis Botox:** el blister x4 y la unidad suelta se cuentan juntos, en unidades sueltas (cada blister son 4). Aparece una sola fila, la de la unidad suelta, que dice cuántos blisters incluye.",
         "**En camino** sale de las **órdenes de compra** pendientes. Para que cuente, cada ítem de la orden tiene que estar **vinculado a su producto** y la orden tiene que tener la **entrega estimada**: Órdenes de compra → abrir la orden → **Editar orden**. Si un ítem no está vinculado, el Forecast lo avisa arriba. Si no hay entrega estimada, se calcula con la demora del proveedor.",
         "Cada producto muestra: **stock libre** (lo que hay menos lo reservado para pedidos web), **en camino** (órdenes de compra pendientes), **ventas por semana** con las barritas de las últimas 12 semanas y si viene subiendo o bajando, **cuándo se acaba**, **pedir antes del** y la **cantidad sugerida**.",

@@ -9,8 +9,10 @@ import { db } from "./db";
 //  - se simula día a día el stock libre (stock − reservado) sumando lo que está en camino
 //    en órdenes de compra pendientes.
 
-export type ConfigForecast = { demora: number; colchon: number; cubrir: number };
-export const CONFIG_DEFAULT: ConfigForecast = { demora: 30, colchon: 15, cubrir: 60 };
+// ritmos: ventas por semana cargadas a mano por producto (reemplazan lo calculado, ej. cuando
+// el historial está bajo porque faltó stock)
+export type ConfigForecast = { demora: number; colchon: number; cubrir: number; ritmos: Record<string, number> };
+export const CONFIG_DEFAULT: ConfigForecast = { demora: 30, colchon: 15, cubrir: 60, ritmos: {} };
 
 export type Estado = "AGOTADO" | "FALTA" | "PEDIR_YA" | "PRONTO" | "OK" | "SIN_VENTAS";
 export const ESTADOS: Record<Estado, { label: string; clase: string }> = {
@@ -31,6 +33,8 @@ export type FilaForecast = {
   type: string;
   propio: boolean;
   libre: number;
+  prevendido: number; // preventas pendientes de entregar: se pagan primero con lo que llega
+  manual: boolean; // el ritmo lo cargó gerencia a mano
   enCamino: number;
   llegada: string | null; // próxima llegada de una orden pendiente
   porSemana: number; // ritmo actual (u./semana)
@@ -54,7 +58,8 @@ const entre = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`)
 
 export async function getConfigForecast(): Promise<ConfigForecast> {
   const { data } = await db().from("app_settings").select("value").eq("key", "forecast").maybeSingle();
-  return { ...CONFIG_DEFAULT, ...((data?.value as Partial<ConfigForecast>) ?? {}) };
+  const v = (data?.value as Partial<ConfigForecast>) ?? {};
+  return { ...CONFIG_DEFAULT, ...v, ritmos: v.ritmos ?? {} };
 }
 
 export type ResumenHistorial = {
@@ -107,7 +112,7 @@ function estacionalidad(porMes: Map<string, number>, corte: string, inicio: stri
 export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaForecast[]; inicio: string | null; sinVincular: string[] }> {
   const hoy = hoyAR();
   const ayer = sumar(hoy, -1);
-  const [demanda, { data: productos, error: e1 }, { data: stock, error: e2 }, { data: oc, error: e3 }, resumen, { data: sueltas }] = await Promise.all([
+  const [demanda, { data: productos, error: e1 }, { data: stock, error: e2 }, { data: oc, error: e3 }, resumen, { data: sueltas }, { data: pre, error: e4 }] = await Promise.all([
     getDemanda(sumar(hoy, -800)),
     db().from("products").select("id, sku, name, unit, category, type, active, own_made, split_into_product_id, split_factor").eq("active", true),
     db().from("v_stock_disponible").select("product_id, on_hand, reserved, location_id"),
@@ -123,8 +128,17 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       .select("description, quantity, received_qty, order:purchase_orders!inner(status)")
       .is("product_id", null)
       .in("order.status", ["PENDIENTE", "RECIBIDA_PARCIAL"]),
+    db()
+      .from("preorder_lines")
+      .select("product_id, quantity, delivered, preorder:preorders!inner(status)")
+      .in("preorder.status", ["PENDIENTE", "PARCIAL"]),
   ]);
-  if (e1 || e2 || e3) throw new Error((e1 ?? e2 ?? e3)!.message);
+  if (e1 || e2 || e3 || e4) throw new Error((e1 ?? e2 ?? e3 ?? e4)!.message);
+  const prevendido = new Map<string, number>();
+  for (const l of pre ?? []) {
+    const q = Number(l.quantity) - Number(l.delivered);
+    if (q > 0) prevendido.set(l.product_id, (prevendido.get(l.product_id) ?? 0) + q);
+  }
 
   const inicio = demanda.length ? demanda.reduce((a, d) => (d.dia < a ? d.dia : a), demanda[0].dia) : null;
   const corte = resumen.corte ?? hoy;
@@ -168,6 +182,7 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     const ll = llegadas.get(destino) ?? [];
     for (const x of llegadas.get(b.id) ?? []) ll.push({ dia: x.dia, qty: x.qty * f });
     llegadas.set(destino, ll);
+    if (prevendido.get(b.id)) prevendido.set(destino, (prevendido.get(destino) ?? 0) + prevendido.get(b.id)! * f);
     incluye.set(destino, `Incluye ${b.name}: ${lb.toLocaleString("es-AR")} × ${f.toLocaleString("es-AR")} u.`);
   }
 
@@ -185,11 +200,13 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     const n84 = Math.min(84, disp);
     const r28 = total(n28) / n28;
     const r84 = total(n84) / n84;
-    const base = disp >= 56 ? 0.6 * r28 + 0.4 * r84 : r28;
+    const aMano = cfg.ritmos[p.id];
+    const manual = typeof aMano === "number" && aMano > 0;
+    const base = manual ? aMano / 7 : disp >= 56 ? 0.6 * r28 + 0.4 * r84 : r28;
 
     const porMes = new Map<string, number>();
     for (const [d, q] of dias) porMes.set(d.slice(0, 7), (porMes.get(d.slice(0, 7)) ?? 0) + q);
-    const idx = inicio ? estacionalidad(porMes, corte, inicio) : null;
+    const idx = inicio && !manual ? estacionalidad(porMes, corte, inicio) : null;
     const mesHoy = Number(hoy.slice(5, 7)) - 1;
     const idxAhora = idx ? (idx[mesHoy] + idx[(mesHoy + 11) % 12]) / 2 : 1;
     const ritmo = (d: number) => {
@@ -200,7 +217,8 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
 
     const ll = llegadas.get(p.id) ?? [];
     const enCamino = ll.reduce((s, x) => s + x.qty, 0);
-    let s = libre.get(p.id) ?? 0;
+    const prev = prevendido.get(p.id) ?? 0;
+    let s = (libre.get(p.id) ?? 0) - prev; // lo prevendido ya está comprometido
     let seAcaba: number | null = null;
     let hueco: { desde: string; hasta: string } | null = null;
     if (base > 0) {
@@ -209,12 +227,14 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
         const f = sumar(hoy, d);
         for (const x of ll) if (x.dia === f) s += x.qty;
         if (hueco && !hueco.hasta && s > 0) hueco.hasta = f;
+        const antes = s;
         s -= ritmo(d);
         if (s <= 0) {
-          // si todavía tiene que llegar algo, es un faltante transitorio: lo que no hay no se vende
+          // si todavía tiene que llegar algo, es un faltante transitorio: lo que no hay no se
+          // vende (pero lo prevendido sigue debiéndose)
           if (ultimaLlegada && ultimaLlegada > f) {
             if (!hueco) hueco = { desde: f, hasta: "" };
-            s = 0;
+            s = Math.min(antes, 0);
             continue;
           }
           seAcaba = d;
@@ -227,12 +247,12 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     let necesidad = 0;
     for (let d = 0; d < horizonte; d++) necesidad += ritmo(d);
     necesidad += ritmo(cfg.demora) * cfg.colchon;
-    const sugerido = base > 0 ? Math.max(0, Math.ceil(necesidad - Math.max(0, libre.get(p.id) ?? 0) - enCamino)) : 0;
+    const sugerido = base > 0 ? Math.max(0, Math.ceil(necesidad + prev - Math.max(0, libre.get(p.id) ?? 0) - enCamino)) : 0;
 
     const pedirAntes = seAcaba !== null ? sumar(hoy, seAcaba - cfg.demora - cfg.colchon) : null;
     let estado: Estado = "OK";
     if (base <= 0) estado = "SIN_VENTAS";
-    else if ((libre.get(p.id) ?? 0) <= 0 && enCamino <= 0) estado = "AGOTADO";
+    else if ((libre.get(p.id) ?? 0) - prev <= 0 && enCamino <= 0) estado = "AGOTADO";
     else if (hueco) estado = "FALTA";
     else if (pedirAntes && pedirAntes <= hoy) estado = sugerido > 0 ? "PEDIR_YA" : "OK";
     else if (pedirAntes && pedirAntes <= sumar(hoy, 14)) estado = sugerido > 0 ? "PRONTO" : "OK";
@@ -253,6 +273,8 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       type: p.type,
       propio: !!p.own_made,
       libre: libre.get(p.id) ?? 0,
+      prevendido: prev,
+      manual,
       enCamino,
       llegada: ll.length ? ll.map((x) => x.dia).sort()[0] : null,
       porSemana: base * 7,

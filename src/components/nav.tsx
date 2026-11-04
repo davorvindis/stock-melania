@@ -15,7 +15,7 @@ const grupos: Grupo[] = [
     label: "Ventas",
     items: [
       { href: "/ventas", label: "Ventas", section: "ventas" },
-      { href: "/ventas/forecast", label: "Forecast", section: "compras" },
+      { href: "/ventas/forecast", label: "Forecast", section: "forecast" },
       { href: "/caja", label: "Cierre de caja", section: "caja" },
       { href: "/preventa", label: "Preventa", section: "preventa" },
     ],

@@ -69,7 +69,7 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
           Descargar Excel
         </a>
       </div>
-      <PestaniasVentas activa="/ventas" forecast={can(user, "compras")} />
+      <PestaniasVentas activa="/ventas" forecast={can(user, "forecast")} />
 
       <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input type="hidden" name="vista" value={vista} />

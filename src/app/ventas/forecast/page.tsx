@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { can, requireSection } from "@/lib/auth";
 import { ESTADOS, getConfigForecast, getForecast, getResumenHistorial, hoyAR, type Estado, type FilaForecast } from "@/lib/forecast";
-import { guardarConfigForecast, importarHistorialWix } from "@/lib/forecast-actions";
+import { guardarConfigForecast, guardarRitmo, importarHistorialWix } from "@/lib/forecast-actions";
 import { wixConfigurado } from "@/lib/wix/client";
 import { fmtDate, fmtDateTime, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, th, td } from "@/components/ui";
@@ -96,6 +96,7 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
               <div>
                 <div className="text-xs text-soft">Stock libre</div>
                 <div className="font-medium">{fmtQty(f.libre)}</div>
+                {f.prevendido > 0 && <div className="text-xs text-amber-800">prevendido {fmtQty(f.prevendido)}</div>}
               </div>
               <div>
                 <div className="text-xs text-soft">En camino</div>
@@ -104,6 +105,7 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
               <div>
                 <div className="text-xs text-soft">Por semana</div>
                 <div className="font-medium">{fmtQty(redondeo(f.porSemana))}</div>
+                {f.manual && <div className="text-xs text-rose-deep">cargado a mano</div>}
               </div>
             </div>
             <div className="mt-2 flex items-center gap-2">
@@ -142,7 +144,10 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
                 <td className={td}>
                   <Chip e={f.estado} />
                 </td>
-                <td className={`${td} text-right`}>{fmtQty(f.libre)}</td>
+                <td className={`${td} text-right`}>
+                  {fmtQty(f.libre)}
+                  {f.prevendido > 0 && <div className="text-xs text-amber-800">prevendido {fmtQty(f.prevendido)}</div>}
+                </td>
                 <td className={`${td} text-right`}>
                   {f.enCamino ? fmtQty(f.enCamino) : "—"}
                   {f.llegada && <div className="text-xs text-soft">llega {fmtDate(f.llegada)}</div>}
@@ -152,7 +157,7 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
                     <span className="w-12 text-right font-medium">{fmtQty(redondeo(f.porSemana))}</span>
                     <Barras semanas={f.semanas} />
                   </div>
-                  <Tendencia t={f.tendencia} />
+                  {f.manual ? <div className="text-xs text-rose-deep">cargado a mano</div> : <Tendencia t={f.tendencia} />}
                 </td>
                 <td className={td}>
                   {f.seAcaba ? (
@@ -193,7 +198,7 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
 }
 
 export default async function Forecast({ searchParams }: { searchParams: Promise<SP> }) {
-  const user = await requireSection("compras");
+  const user = await requireSection("forecast");
   const sp = await searchParams;
   const hoy = hoyAR();
   const cfg = await getConfigForecast();
@@ -211,6 +216,7 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
     if (q && !`${f.name} ${f.sku}`.toLowerCase().includes(q)) return false;
     return true;
   });
+  const conRitmo = filas.filter((f) => f.manual);
   const propios = lista.filter((f) => f.propio);
   const comprados = lista.filter((f) => !f.propio);
   const cuenta = (e: Estado) => filas.filter((f) => f.estado === e).length;
@@ -219,7 +225,7 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
   return (
     <div>
       <PageTitle>Ventas</PageTitle>
-      <PestaniasVentas activa="/ventas/forecast" forecast={can(user, "compras")} />
+      <PestaniasVentas activa="/ventas/forecast" forecast={can(user, "forecast")} />
       <Flash ok={sp.ok} error={sp.error} />
 
       <p className="mb-4 text-sm text-soft">
@@ -313,7 +319,7 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
           <p className="mb-3 text-sm text-soft">
             Ritmo de venta: promedio de los últimos 28 días (pesa más) y de los últimos 84. Cuenta ventas minoristas y mayoristas, regalos, muestras, uso
             interno y lo usado para armar kits. Si hay más de un año de historial, ajusta por temporada (cómo se vendió cada mes el año anterior). La cantidad
-            sugerida cubre la demora del proveedor más los días a cubrir y el colchón, menos el stock libre y lo que está en camino.
+            sugerida cubre la demora del proveedor más los días a cubrir y el colchón, menos el stock libre y lo que está en camino. Lo prevendido (Preventa) se descuenta primero: se paga con lo que llega.
           </p>
           <form action={guardarConfigForecast} className="grid grid-cols-3 gap-2">
             <div>
@@ -335,6 +341,51 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
               <input id="cubrir" name="cubrir" defaultValue={cfg.cubrir} inputMode="numeric" className={input} />
             </div>
             <div className="col-span-3 flex justify-end">
+              <SubmitButton className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush">
+                Guardar
+              </SubmitButton>
+            </div>
+          </form>
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 text-lg font-semibold text-ink">Ventas por semana a mano</h2>
+          <p className="mb-3 text-sm text-soft">
+            Si sabés que un producto se va a vender distinto de lo que muestra la historia (por ejemplo, faltó stock y se vendió menos), cargá cuánto
+            esperás vender por semana y el Forecast usa ese número en lugar del calculado.
+          </p>
+          {conRitmo.length > 0 && (
+            <ul className="mb-3 divide-y divide-blush-100 text-sm">
+              {conRitmo.map((f) => (
+                <li key={f.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span className="min-w-0 truncate">{f.name}</span>
+                  <span className="flex items-center gap-3 whitespace-nowrap">
+                    <span className="font-medium">{fmtQty(cfg.ritmos[f.id])} u./semana</span>
+                    <form action={guardarRitmo}>
+                      <input type="hidden" name="producto" value={f.id} />
+                      <input type="hidden" name="ritmo" value="" />
+                      <SubmitButton className="text-xs font-medium text-rose-deep hover:underline">Quitar</SubmitButton>
+                    </form>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form action={guardarRitmo} className="grid grid-cols-3 gap-2">
+            <select name="producto" aria-label="Producto" className={`${input} col-span-3 sm:col-span-2`} defaultValue="">
+              <option value="" disabled>
+                Elegí un producto
+              </option>
+              {[...filas]
+                .sort((a, b) => a.name.localeCompare(b.name, "es"))
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </select>
+            <input name="ritmo" inputMode="decimal" placeholder="u. por semana" aria-label="Unidades por semana" className={`${input} col-span-2 sm:col-span-1`} />
+            <div className="flex justify-end sm:col-span-3">
               <SubmitButton className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-rose-deep hover:border-blush">
                 Guardar
               </SubmitButton>
