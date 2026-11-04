@@ -115,6 +115,10 @@ export default async function EditarProducto({
               Maneja vencimiento
             </label>
             <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="fabricacion_propia" defaultChecked={p.own_made} className="h-4 w-4 accent-rose-deep" />
+              Fabricación propia
+            </label>
+            <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="activo" defaultChecked={p.active} className="h-4 w-4 accent-rose-deep" />
               Activo
             </label>

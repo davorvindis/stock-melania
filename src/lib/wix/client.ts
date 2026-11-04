@@ -171,6 +171,24 @@ export async function searchOrdersDesde(desdeIso: string, maxPaginas = 20): Prom
   return out;
 }
 
+// una página de pedidos creados entre dos fechas (historial para el forecast), en orden ascendente
+export async function searchOrdersCreados(desdeIso: string, hastaIso: string, cursor?: string) {
+  const body: Record<string, unknown> = cursor
+    ? { search: { cursorPaging: { cursor, limit: 100 } } }
+    : {
+        search: {
+          filter: { createdDate: { $gte: desdeIso, $lt: hastaIso } },
+          sort: [{ fieldName: "createdDate", order: "ASC" }],
+          cursorPaging: { limit: 100 },
+        },
+      };
+  const r = await wixFetch<{ orders?: WixOrder[]; metadata?: { cursors?: { next?: string }; hasNext?: boolean } }>(
+    "/ecom/v1/orders/search",
+    { body }
+  );
+  return { orders: r.orders ?? [], next: r.metadata?.hasNext ? r.metadata.cursors?.next : undefined };
+}
+
 // seguimiento de Correo Argentino: no es un proveedor predefinido de Wix, el link se pasa a mano
 // (el formulario de seguimiento de envíos e-commerce del Correo)
 function trackingInfo(numero: string) {

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireSection } from "@/lib/auth";
+import { can, requireSection } from "@/lib/auth";
+import { PestaniasVentas } from "./pestanias";
 import { db } from "@/lib/db";
 import { getLocations, getProducts } from "@/lib/queries";
 import { CANALES, agruparPedidos, getVentas, porPersona, porProducto, rangoMesActual } from "@/lib/ventas";
@@ -29,7 +30,7 @@ const canalClass = (t: string) =>
   t === "WHOLESALE_SALE" ? "bg-violet-100 text-violet-800" : t === "SALE" ? "bg-blush-100 text-rose-deeper" : "bg-stone-200 text-stone-700";
 
 export default async function Ventas({ searchParams }: { searchParams: Promise<SP> }) {
-  await requireSection("ventas");
+  const user = await requireSection("ventas");
   const sp = await searchParams;
   const def = rangoMesActual();
   const f = { ...sp, desde: sp.desde ?? def.desde, hasta: sp.hasta ?? def.hasta };
@@ -68,6 +69,7 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
           Descargar Excel
         </a>
       </div>
+      <PestaniasVentas activa="/ventas" forecast={can(user, "compras")} />
 
       <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input type="hidden" name="vista" value={vista} />

@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "3 de noviembre de 2026";
+export const ACTUALIZADO = "4 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -312,6 +312,24 @@ export const MANUAL: Capitulo[] = [
         "**Resumen** (por persona y top 10) · **Por producto** · **Por pedido** (tocá para ver los productos).",
         "**Descargar Excel** con lo filtrado. Las ventas revertidas no se cuentan.",
       ]),
+    ],
+  },
+  {
+    id: "forecast",
+    titulo: "Forecast (cuándo y cuánto comprar)",
+    ver: { s: ["compras"] },
+    bloques: [
+      P("**Para qué sirve:** con lo que se viene vendiendo, prevé hasta cuándo alcanza cada producto y te dice cuándo hacer la orden de compra y más o menos cuántas unidades pedir. Está en **Ventas → Forecast**."),
+      L([
+        "Arriba ves cuántos productos están **Sin stock**, para **Pedir ya**, para **Pedir pronto** (en las próximas 2 semanas) y **Bien**. Tocá una tarjeta para ver esos productos.",
+        "Arriba van los productos de **Fabricación propia** (monodosis, Pro Glue, Pro Lash, Lash One, Elixir, Hidraluxe, Easy gel, Perm, Setting y Mousse): se ven siempre y te dice cuándo y cuánto **fabricar**. Debajo, **los que compramos**, solo los que hay que pedir. Con el filtro ves todos, o por categoría, o buscás uno.",
+        "Para marcar o desmarcar un producto como propio: **Productos** → abrir el producto → tilde **Fabricación propia**.",
+        "Cada producto muestra: **stock libre** (lo que hay menos lo reservado para pedidos web), **en camino** (órdenes de compra pendientes), **ventas por semana** con las barritas de las últimas 12 semanas y si viene subiendo o bajando, **cuándo se acaba**, **pedir antes del** y la **cantidad sugerida**.",
+        "**Cómo calcula:** el ritmo de venta de los últimos 28 días (pesa más) y de los últimos 84; cuenta ventas minoristas y mayoristas, regalos, muestras, uso interno y lo usado para armar kits. Con más de un año de historia ajusta por temporada.",
+        "**Configuración** (abajo): **Demora proveedor** (cuántos días tarda en llegar una compra), **Colchón** (días de reserva por las dudas) y **Comprar para** (cuántos días tiene que cubrir lo que pedís). Con eso calcula la fecha límite y la cantidad.",
+        "**Historial de Wix:** tocá **Traer historial de Wix** para sumar las ventas de la web desde 2025 (anteriores a que arrancara la app). Si quedan más, volvé a tocarlo. Las ventas con SKU sin equivalencia aparecen en la lista para cargarlas en Equivalencias y que cuenten.",
+      ]),
+      A("Es una estimación con lo que pasó: revisala antes de comprar, sobre todo si se viene una promo, un lanzamiento o una venta mayorista grande.", "Es una guía, no una orden"),
     ],
   },
   {

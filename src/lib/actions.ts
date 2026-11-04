@@ -415,6 +415,7 @@ const editarProductoSchema = productoSchema.extend({
   activo: z.string().optional(),
   maneja_lote: z.string().optional(),
   maneja_vencimiento: z.string().optional(),
+  fabricacion_propia: z.string().optional(),
 });
 
 export async function editarProducto(formData: FormData) {
@@ -426,7 +427,7 @@ export async function editarProducto(formData: FormData) {
 
   const { data: antes } = await db()
     .from("products")
-    .select("sku, name, category, unit, type, min_stock, active, tracks_lot, tracks_expiry, description")
+    .select("sku, name, category, unit, type, min_stock, active, tracks_lot, tracks_expiry, own_made, description")
     .eq("id", d.producto)
     .maybeSingle();
   if (!antes) backWithError("/productos", "Producto inexistente");
@@ -442,6 +443,7 @@ export async function editarProducto(formData: FormData) {
     active: d.activo === "on",
     tracks_lot: d.maneja_lote === "on",
     tracks_expiry: d.maneja_vencimiento === "on",
+    own_made: d.fabricacion_propia === "on",
     updated_at: new Date().toISOString(),
   };
   const { error } = await db().from("products").update(cambios).eq("id", d.producto);
