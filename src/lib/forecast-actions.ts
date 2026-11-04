@@ -97,13 +97,17 @@ export async function guardarRitmo(formData: FormData) {
   const txt = String(formData.get("ritmo") ?? "").trim().replace(/\./g, "").replace(",", ".");
   const ritmo = txt ? Number(txt) : null;
   if (ritmo !== null && !(Number.isFinite(ritmo) && ritmo > 0)) volver("error", "Las ventas por semana tienen que ser un número mayor a 0");
+  const hasta = String(formData.get("hasta") ?? "").trim();
+  if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) volver("error", "Fecha inválida");
   const actual = await getConfigForecast();
   const ritmos = { ...actual.ritmos };
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  if (hasta && hasta < hoy) volver("error", "La fecha hasta la que vale tiene que ser de hoy en adelante");
   if (ritmo === null) delete ritmos[producto];
-  else ritmos[producto] = Math.round(ritmo * 10) / 10;
+  else ritmos[producto] = { semana: Math.round(ritmo * 10) / 10, desde: hoy, hasta: hasta || null };
   const value = { ...actual, ritmos };
   const { error } = await db().from("app_settings").upsert({ key: "forecast", value, updated_at: new Date().toISOString(), updated_by: user.alias }, { onConflict: "key" });
   if (error) volver("error", error.message);
-  await db().from("audit_logs").insert({ actor: user.alias, action: "forecast:ritmo", entity: "products", entity_id: producto, detail: { ritmo } });
+  await db().from("audit_logs").insert({ actor: user.alias, action: "forecast:ritmo", entity: "products", entity_id: producto, detail: { ritmo, hasta: hasta || null } });
   volver("ok", ritmo === null ? "Vuelve a usar el ritmo calculado" : "Ritmo guardado");
 }

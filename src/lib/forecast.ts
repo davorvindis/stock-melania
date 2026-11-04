@@ -11,7 +11,10 @@ import { db } from "./db";
 
 // ritmos: ventas por semana cargadas a mano por producto (reemplazan lo calculado, ej. cuando
 // el historial está bajo porque faltó stock)
-export type ConfigForecast = { demora: number; colchon: number; cubrir: number; ritmos: Record<string, number> };
+// Vencen solos: en `hasta` si se cargó, si no 4 semanas después de que llega lo pedido (o 60
+// días desde que se cargó si no hay nada en camino). Después vuelve a lo calculado.
+export type Ritmo = { semana: number; desde: string; hasta?: string | null };
+export type ConfigForecast = { demora: number; colchon: number; cubrir: number; ritmos: Record<string, Ritmo> };
 export const CONFIG_DEFAULT: ConfigForecast = { demora: 30, colchon: 15, cubrir: 60, ritmos: {} };
 
 export type Estado = "AGOTADO" | "FALTA" | "PEDIR_YA" | "PRONTO" | "OK" | "SIN_VENTAS";
@@ -35,6 +38,8 @@ export type FilaForecast = {
   libre: number;
   prevendido: number; // preventas pendientes de entregar: se pagan primero con lo que llega
   manual: boolean; // el ritmo lo cargó gerencia a mano
+  manualHasta: string | null; // hasta cuándo vale (después usa lo calculado)
+  diasSinStock: number; // días sin stock en los últimos 84 (no cuentan para el ritmo)
   enCamino: number;
   llegada: string | null; // próxima llegada de una orden pendiente
   porSemana: number; // ritmo actual (u./semana)
@@ -59,7 +64,11 @@ const entre = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`)
 export async function getConfigForecast(): Promise<ConfigForecast> {
   const { data } = await db().from("app_settings").select("value").eq("key", "forecast").maybeSingle();
   const v = (data?.value as Partial<ConfigForecast>) ?? {};
-  return { ...CONFIG_DEFAULT, ...v, ritmos: v.ritmos ?? {} };
+  const ritmos: Record<string, Ritmo> = {};
+  for (const [k, r] of Object.entries((v.ritmos ?? {}) as Record<string, Ritmo | number>)) {
+    ritmos[k] = typeof r === "number" ? { semana: r, desde: hoyAR() } : r;
+  }
+  return { ...CONFIG_DEFAULT, ...v, ritmos };
 }
 
 export type ResumenHistorial = {
@@ -112,7 +121,7 @@ function estacionalidad(porMes: Map<string, number>, corte: string, inicio: stri
 export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaForecast[]; inicio: string | null; sinVincular: string[] }> {
   const hoy = hoyAR();
   const ayer = sumar(hoy, -1);
-  const [demanda, { data: productos, error: e1 }, { data: stock, error: e2 }, { data: oc, error: e3 }, resumen, { data: sueltas }, { data: pre, error: e4 }] = await Promise.all([
+  const [demanda, { data: productos, error: e1 }, { data: stock, error: e2 }, { data: oc, error: e3 }, resumen, { data: sueltas }, { data: quiebres, error: e5 }, { data: pre, error: e4 }] = await Promise.all([
     getDemanda(sumar(hoy, -800)),
     db().from("products").select("id, sku, name, unit, category, type, active, own_made, split_into_product_id, split_factor").eq("active", true),
     db().from("v_stock_disponible").select("product_id, on_hand, reserved, location_id"),
@@ -128,12 +137,17 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       .select("description, quantity, received_qty, order:purchase_orders!inner(status)")
       .is("product_id", null)
       .in("order.status", ["PENDIENTE", "RECIBIDA_PARCIAL"]),
+    // desde que arrancó la app (antes no hay ledger para saber el stock de cada día)
+    db().rpc("forecast_dias_sin_stock", { p_desde: "2026-09-30" }),
     db()
       .from("preorder_lines")
       .select("product_id, quantity, delivered, preorder:preorders!inner(status)")
       .in("preorder.status", ["PENDIENTE", "PARCIAL"]),
   ]);
-  if (e1 || e2 || e3 || e4) throw new Error((e1 ?? e2 ?? e3 ?? e4)!.message);
+  if (e1 || e2 || e3 || e4 || e5) throw new Error((e1 ?? e2 ?? e3 ?? e4 ?? e5)!.message);
+  // días que arrancaron sin stock (desde que existe la app): no cuentan para el ritmo
+  const sinStock = new Map<string, Set<string>>();
+  for (const r of (quiebres ?? []) as { product_id: string; dias: string[] }[]) sinStock.set(r.product_id, new Set(r.dias));
   const prevendido = new Map<string, number>();
   for (const l of pre ?? []) {
     const q = Number(l.quantity) - Number(l.delivered);
@@ -182,6 +196,9 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     const ll = llegadas.get(destino) ?? [];
     for (const x of llegadas.get(b.id) ?? []) ll.push({ dia: x.dia, qty: x.qty * f });
     llegadas.set(destino, ll);
+    // sin stock = no había ni sueltas ni blisters
+    const sb = sinStock.get(b.id) ?? new Set<string>();
+    sinStock.set(destino, new Set([...(sinStock.get(destino) ?? [])].filter((d) => sb.has(d))));
     if (prevendido.get(b.id)) prevendido.set(destino, (prevendido.get(destino) ?? 0) + prevendido.get(b.id)! * f);
     incluye.set(destino, `Incluye ${b.name}: ${lb.toLocaleString("es-AR")} × ${f.toLocaleString("es-AR")} u.`);
   }
@@ -190,19 +207,34 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
   for (const p of productos ?? []) {
     if (unidos.has(p.id)) continue;
     const dias = porProd.get(p.id) ?? new Map<string, number>();
-    const total = (n: number) => {
-      let s = 0;
-      for (let i = 0; i < n; i++) s += dias.get(sumar(ayer, -i)) ?? 0;
-      return s;
+    const quiebre = sinStock.get(p.id) ?? new Set<string>();
+    // promedio diario de los últimos n días contando solo los días que hubo stock
+    const promedio = (n: number) => {
+      let q = 0;
+      let k = 0;
+      for (let i = 0; i < n; i++) {
+        const d = sumar(ayer, -i);
+        q += dias.get(d) ?? 0;
+        if (!quiebre.has(d)) k++;
+      }
+      return k >= 7 ? q / k : q / n; // casi todo sin stock: no hay con qué corregir
     };
     const disp = Math.max(1, diasHistoria - 1);
     const n28 = Math.min(28, disp);
     const n84 = Math.min(84, disp);
-    const r28 = total(n28) / n28;
-    const r84 = total(n84) / n84;
+    const r28 = promedio(n28);
+    const r84 = promedio(n84);
+    let diasSinStock = 0;
+    for (let i = 0; i < n84; i++) if (quiebre.has(sumar(ayer, -i))) diasSinStock++;
+
+    const llp = llegadas.get(p.id) ?? [];
     const aMano = cfg.ritmos[p.id];
-    const manual = typeof aMano === "number" && aMano > 0;
-    const base = manual ? aMano / 7 : disp >= 56 ? 0.6 * r28 + 0.4 * r84 : r28;
+    const manualHasta = aMano
+      ? aMano.hasta ||
+        (llp.length ? sumar(llp.map((x) => x.dia).sort()[0], 28) : sumar(aMano.desde, 60))
+      : null;
+    const manual = !!aMano && aMano.semana > 0 && !!manualHasta && manualHasta >= hoy;
+    const base = manual ? aMano!.semana / 7 : disp >= 56 ? 0.6 * r28 + 0.4 * r84 : r28;
 
     const porMes = new Map<string, number>();
     for (const [d, q] of dias) porMes.set(d.slice(0, 7), (porMes.get(d.slice(0, 7)) ?? 0) + q);
@@ -275,6 +307,8 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       libre: libre.get(p.id) ?? 0,
       prevendido: prev,
       manual,
+      manualHasta: manual ? manualHasta : null,
+      diasSinStock,
       enCamino,
       llegada: ll.length ? ll.map((x) => x.dia).sort()[0] : null,
       porSemana: base * 7,
