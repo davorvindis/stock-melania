@@ -42,6 +42,7 @@ export type FilaForecast = {
   pedirAntes: string | null;
   sugerido: number;
   estado: Estado;
+  incluye: string | null; // otro producto que se cuenta junto (ej. el blister x4 en las unidades sueltas)
 };
 
 const DIA = 86400000;
@@ -101,12 +102,12 @@ function estacionalidad(porMes: Map<string, number>, corte: string, inicio: stri
   return idx;
 }
 
-export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaForecast[]; inicio: string | null }> {
+export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaForecast[]; inicio: string | null; sinVincular: string[] }> {
   const hoy = hoyAR();
   const ayer = sumar(hoy, -1);
-  const [demanda, { data: productos, error: e1 }, { data: stock, error: e2 }, { data: oc, error: e3 }, resumen] = await Promise.all([
+  const [demanda, { data: productos, error: e1 }, { data: stock, error: e2 }, { data: oc, error: e3 }, resumen, { data: sueltas }] = await Promise.all([
     getDemanda(sumar(hoy, -800)),
-    db().from("products").select("id, sku, name, unit, category, type, active, own_made").eq("active", true),
+    db().from("products").select("id, sku, name, unit, category, type, active, own_made, split_into_product_id, split_factor").eq("active", true),
     db().from("v_stock_disponible").select("product_id, on_hand, reserved, location_id"),
     db()
       .from("purchase_order_lines")
@@ -114,6 +115,12 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       .not("product_id", "is", null)
       .in("order.status", ["PENDIENTE", "RECIBIDA_PARCIAL"]),
     getResumenHistorial(),
+    // ítems de órdenes abiertas sin producto vinculado: no se pueden contar como "en camino"
+    db()
+      .from("purchase_order_lines")
+      .select("description, quantity, received_qty, order:purchase_orders!inner(status)")
+      .is("product_id", null)
+      .in("order.status", ["PENDIENTE", "RECIBIDA_PARCIAL"]),
   ]);
   if (e1 || e2 || e3) throw new Error((e1 ?? e2 ?? e3)!.message);
 
@@ -140,8 +147,31 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     llegadas.set(l.product_id, arr);
   }
 
+  // productos que se separan en otro (blister x4 → unidades sueltas): es el mismo producto,
+  // así que se suman al suelto en unidades (stock, ventas y lo que viene) y el blister no se
+  // muestra aparte.
+  const activos = new Set((productos ?? []).map((p) => p.id));
+  const incluye = new Map<string, string>();
+  const unidos = new Set<string>();
+  for (const b of productos ?? []) {
+    const destino = b.split_into_product_id as string | null;
+    const f = Number(b.split_factor);
+    if (!destino || !activos.has(destino) || !(f > 0)) continue;
+    unidos.add(b.id);
+    const dd = porProd.get(destino) ?? new Map<string, number>();
+    for (const [d, q] of porProd.get(b.id) ?? []) dd.set(d, (dd.get(d) ?? 0) + q * f);
+    porProd.set(destino, dd);
+    const lb = libre.get(b.id) ?? 0;
+    libre.set(destino, (libre.get(destino) ?? 0) + lb * f);
+    const ll = llegadas.get(destino) ?? [];
+    for (const x of llegadas.get(b.id) ?? []) ll.push({ dia: x.dia, qty: x.qty * f });
+    llegadas.set(destino, ll);
+    incluye.set(destino, `Incluye ${b.name}: ${lb.toLocaleString("es-AR")} × ${f.toLocaleString("es-AR")} u.`);
+  }
+
   const filas: FilaForecast[] = [];
   for (const p of productos ?? []) {
+    if (unidos.has(p.id)) continue;
     const dias = porProd.get(p.id) ?? new Map<string, number>();
     const total = (n: number) => {
       let s = 0;
@@ -222,9 +252,13 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       pedirAntes,
       sugerido,
       estado,
+      incluye: incluye.get(p.id) ?? null,
     });
   }
   const orden: Record<Estado, number> = { AGOTADO: 0, PEDIR_YA: 1, PRONTO: 2, OK: 3, SIN_VENTAS: 4 };
   filas.sort((a, b) => Number(b.propio) - Number(a.propio) || orden[a.estado] - orden[b.estado] || (a.diasStock ?? 9999) - (b.diasStock ?? 9999) || b.porSemana - a.porSemana);
-  return { filas, inicio };
+  const sinVincular = ((sueltas ?? []) as { description: string; quantity: number | null; received_qty: number }[])
+    .filter((l) => l.quantity == null || Number(l.received_qty) < Number(l.quantity))
+    .map((l) => l.description);
+  return { filas, inicio, sinVincular };
 }
