@@ -70,13 +70,13 @@ export async function getResumenHistorial(): Promise<ResumenHistorial> {
   return { ...r, lineas: Number(r.lineas) };
 }
 
+// una sola llamada: una fila por producto con {dia: cantidad}
 async function getDemanda(desde: string) {
-  const filas: { product_id: string; dia: string; origen: string; qty: number }[] = [];
-  for (let i = 0; ; i += 1000) {
-    const { data, error } = await db().rpc("forecast_demanda", { p_desde: desde }).order("dia").order("product_id").range(i, i + 999);
-    if (error) throw new Error(error.message);
-    filas.push(...((data ?? []) as typeof filas));
-    if (!data || data.length < 1000) break;
+  const { data, error } = await db().rpc("forecast_demanda_json", { p_desde: desde });
+  if (error) throw new Error(error.message);
+  const filas: { product_id: string; dia: string; qty: number }[] = [];
+  for (const r of (data ?? []) as { product_id: string; dias: Record<string, number> }[]) {
+    for (const [dia, qty] of Object.entries(r.dias)) filas.push({ product_id: r.product_id, dia, qty: Number(qty) });
   }
   return filas;
 }
