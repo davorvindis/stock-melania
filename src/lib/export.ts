@@ -13,8 +13,9 @@ import {
   type FiltrosMovimientos,
   type FiltrosStock,
 } from "./queries";
-import { MOVEMENT_LABELS, LOT_STATUS_LABELS, origenDestino } from "./types";
+import { MOVEMENT_LABELS, LOT_STATUS_LABELS, fmtDate, origenDestino } from "./types";
 import { getVentas, porProducto, type FiltrosVentas } from "./ventas";
+import { ESTADOS as ESTADOS_FORECAST, type FilaForecast } from "./forecast";
 
 // Exportación XLSX encapsulada: si algún día cambia la librería, solo se toca este archivo.
 
@@ -311,5 +312,115 @@ export async function ventasWorkbook(filtros: FiltrosVentas): Promise<ArrayBuffe
     ws2.addRow({ sku: p.sku, producto: p.name, minorista: p.minorista, mayorista: p.mayorista, otras: p.otras, total: p.total });
   }
   styleHeader(ws2);
+  return new Uint8Array(await wb.xlsx.writeBuffer()).buffer as ArrayBuffer;
+}
+
+// planilla de compras del Forecast, con formato de orden de compra: hoja 1 = la orden
+// (cantidad editable, precargada con la sugerida, y total), hoja 2 = el análisis
+export async function forecastWorkbook(filas: FilaForecast[], titulo: string): Promise<ArrayBuffer> {
+  const wb = new ExcelJS.Workbook();
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  const rosa = "FFA45A52";
+  const blush = "FFF9E8E6";
+  const editable = "FFFFF4CC";
+  const borde = { style: "thin" as const, color: { argb: "FFE6CFCB" } };
+  const bordes = { top: borde, left: borde, bottom: borde, right: borde };
+
+  // ── hoja 1: orden ──
+  const ws = wb.addWorksheet("Orden de compra", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  ws.columns = [{ width: 5 }, { width: 44 }, { width: 26 }, { width: 13 }, { width: 13 }, { width: 34 }];
+  ws.mergeCells("A1:F1");
+  ws.getCell("A1").value = "MELANIA PROFESSIONAL";
+  ws.getCell("A1").font = { bold: true, size: 18, color: { argb: rosa } };
+  ws.mergeCells("A2:F2");
+  ws.getCell("A2").value = titulo.includes("Fabricación") ? "Orden de fabricación" : "Orden de compra";
+  ws.getCell("A2").font = { bold: true, size: 13 };
+  const datos: [string, string][] = [
+    ["Fecha", hoy.split("-").reverse().join("/")],
+    ["Proveedor", ""],
+    ["Pedido por", ""],
+    ["Entrega estimada", ""],
+  ];
+  datos.forEach(([k, v], n) => {
+    const r = 4 + n;
+    ws.getCell(`A${r}`).value = k;
+    ws.mergeCells(`A${r}:B${r}`);
+    ws.getCell(`A${r}`).font = { bold: true };
+    ws.mergeCells(`C${r}:F${r}`);
+    ws.getCell(`C${r}`).value = v;
+    ws.getCell(`C${r}`).border = { bottom: borde };
+    if (!v) ws.getCell(`C${r}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: editable } };
+  });
+  const cab = 9;
+  const head = ws.getRow(cab);
+  head.values = ["#", "Producto", "SKU", "Unidad", "Cantidad", "Notas"];
+  head.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  head.eachCell((c) => {
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rosa } };
+    c.border = bordes;
+    c.alignment = { vertical: "middle" };
+  });
+  const aPedir = filas.filter((f) => f.sugerido > 0);
+  aPedir.forEach((f, n) => {
+    const row = ws.getRow(cab + 1 + n);
+    row.values = [n + 1, f.name, f.sku, f.unit, f.sugerido, f.hueco ? `Falta del ${fmtDate(f.hueco.desde)} al ${fmtDate(f.hueco.hasta)}` : ""];
+    row.eachCell({ includeEmpty: true }, (c) => (c.border = bordes));
+    row.getCell(5).fill = { type: "pattern", pattern: "solid", fgColor: { argb: editable } };
+    row.getCell(5).font = { bold: true };
+    row.getCell(5).numFmt = "#,##0";
+    row.getCell(6).fill = { type: "pattern", pattern: "solid", fgColor: { argb: editable } };
+  });
+  const fin = cab + aPedir.length;
+  const tot = ws.getRow(fin + 1);
+  tot.getCell(4).value = "Total";
+  tot.getCell(4).font = { bold: true };
+  tot.getCell(5).value = aPedir.length ? { formula: `SUM(E${cab + 1}:E${fin})`, result: aPedir.reduce((s, f) => s + f.sugerido, 0) } : 0;
+  tot.getCell(5).font = { bold: true };
+  tot.getCell(5).numFmt = "#,##0";
+  tot.getCell(5).fill = { type: "pattern", pattern: "solid", fgColor: { argb: blush } };
+  const obs = fin + 3;
+  ws.getCell(`A${obs}`).value = "Observaciones";
+  ws.getCell(`A${obs}`).font = { bold: true };
+  ws.mergeCells(`A${obs + 1}:F${obs + 3}`);
+  ws.getCell(`A${obs + 1}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: editable } };
+  ws.getCell(`A${obs + 1}`).border = bordes;
+  ws.getCell(`A${obs + 5}`).value = "Las cantidades en amarillo son una sugerida del Forecast según las ventas: se pueden cambiar.";
+  ws.getCell(`A${obs + 5}`).font = { italic: true, size: 9, color: { argb: "FF8A7A77" } };
+
+  // ── hoja 2: análisis ──
+  const wa = wb.addWorksheet("Análisis");
+  wa.columns = [
+    { header: "Producto", key: "producto", width: 40 },
+    { header: "SKU", key: "sku", width: 24 },
+    { header: "Categoría", key: "categoria", width: 20 },
+    { header: "Estado", key: "estado", width: 20 },
+    { header: "Stock libre", key: "libre", width: 11 },
+    { header: "Prevendido", key: "prevendido", width: 11 },
+    { header: "En camino", key: "camino", width: 11 },
+    { header: "Llega", key: "llega", width: 12 },
+    { header: "Ventas por semana", key: "semana", width: 12 },
+    { header: "Se acaba", key: "acaba", width: 12 },
+    { header: "Pedir antes del", key: "antes", width: 14 },
+    { header: "Sugerido", key: "sugerido", width: 11 },
+  ];
+  for (const f of filas) {
+    wa.addRow({
+      producto: f.name,
+      sku: f.sku,
+      categoria: f.category ?? "",
+      estado: ESTADOS_FORECAST[f.estado].label,
+      libre: f.libre,
+      prevendido: f.prevendido || null,
+      camino: f.enCamino || null,
+      llega: f.llegada ? fmtDate(f.llegada) : "",
+      semana: Math.round(f.porSemana * 10) / 10,
+      acaba: f.seAcaba ? fmtDate(f.seAcaba) : f.estado === "SIN_VENTAS" ? "" : "+1 año",
+      antes: f.sugerido > 0 && f.pedirAntes ? (f.pedirAntes <= hoy ? "Ya" : fmtDate(f.pedirAntes)) : "",
+      sugerido: f.sugerido || null,
+    });
+  }
+  styleHeader(wa);
+  wa.views = [{ state: "frozen", ySplit: 1 }];
+  wa.autoFilter = { from: "A1", to: "L1" };
   return new Uint8Array(await wb.xlsx.writeBuffer()).buffer as ArrayBuffer;
 }

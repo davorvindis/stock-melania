@@ -332,3 +332,20 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     .map((l) => l.description);
   return { filas, inicio, sinVincular };
 }
+
+// mismos filtros que la pantalla (los propios se ven siempre en la vista por defecto)
+export const PARA_COMPRAR: Estado[] = ["AGOTADO", "FALTA", "PEDIR_YA", "PRONTO"];
+export type FiltrosForecast = { estado?: string; cat?: string; q?: string };
+export function filtrarForecast(filas: FilaForecast[], f: FiltrosForecast): FilaForecast[] {
+  const q = (f.q ?? "").trim().toLowerCase();
+  return filas.filter((x) => {
+    if (f.estado === "todos") {
+      if (x.estado === "SIN_VENTAS") return false;
+    } else if (f.estado && f.estado in ESTADOS) {
+      if (x.estado !== f.estado) return false;
+    } else if (!PARA_COMPRAR.includes(x.estado) && !x.propio) return false;
+    if (f.cat && (x.category ?? "Sin categoría") !== f.cat) return false;
+    if (q && !`${x.name} ${x.sku}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+}

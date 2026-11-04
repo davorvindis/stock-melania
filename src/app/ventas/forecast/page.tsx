@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { can, requireSection } from "@/lib/auth";
-import { ESTADOS, getConfigForecast, getForecast, getResumenHistorial, hoyAR, type Estado, type FilaForecast } from "@/lib/forecast";
+import { ESTADOS, filtrarForecast, getConfigForecast, getForecast, getResumenHistorial, hoyAR, type Estado, type FilaForecast } from "@/lib/forecast";
 import { guardarConfigForecast, guardarRitmo, importarHistorialWix } from "@/lib/forecast-actions";
 import { wixConfigurado } from "@/lib/wix/client";
 import { fmtDate, fmtDateTime, fmtQty } from "@/lib/types";
@@ -23,7 +23,6 @@ const FILTROS: [string, string][] = [
   ["OK", "Bien"],
   ["SIN_VENTAS", "Sin ventas"],
 ];
-const PARA_COMPRAR: Estado[] = ["AGOTADO", "FALTA", "PEDIR_YA", "PRONTO"];
 
 function redondeo(n: number) {
   if (n >= 100) return Math.round(n);
@@ -207,16 +206,7 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
 
   const cats = [...new Set(filas.map((f) => f.category ?? "Sin categoría"))].sort((a, b) => a.localeCompare(b, "es"));
   const q = (sp.q ?? "").trim().toLowerCase();
-  const lista = filas.filter((f) => {
-    if (sp.estado === "todos") {
-      if (f.estado === "SIN_VENTAS") return false;
-    } else if (sp.estado && sp.estado in ESTADOS) {
-      if (f.estado !== sp.estado) return false;
-    } else if (!PARA_COMPRAR.includes(f.estado) && !f.propio) return false; // los propios se ven siempre
-    if (sp.cat && (f.category ?? "Sin categoría") !== sp.cat) return false;
-    if (q && !`${f.name} ${f.sku}`.toLowerCase().includes(q)) return false;
-    return true;
-  });
+  const lista = filtrarForecast(filas, sp);
   // los cargados a mano (vigentes o vencidos) para la lista
   const conRitmo = filas.filter((f) => cfg.ritmos[f.id]);
   const propios = lista.filter((f) => f.propio);
@@ -301,14 +291,30 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
         <>
           {propios.length > 0 && (
             <section className="mb-6">
-              <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-soft">Fabricación propia ({propios.length})</h2>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-soft">Fabricación propia ({propios.length})</h2>
+                <a
+                href={`/api/export/forecast?${new URLSearchParams({ ...(sp.estado ? { estado: sp.estado } : {}), ...(sp.cat ? { cat: sp.cat } : {}), ...(sp.q ? { q: sp.q } : {}), tipo: "propios" }).toString()}`}
+                className="whitespace-nowrap rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-rose-deep hover:border-blush"
+              >
+                Descargar planilla
+              </a>
+              </div>
               <p className="mb-2 text-xs text-soft">Lo que fabricamos nosotros: se muestran siempre, aunque estén bien de stock.</p>
               <Lista lista={propios} hoy={hoy} />
             </section>
           )}
           {comprados.length > 0 && (
             <section>
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-soft">Productos que compramos ({comprados.length})</h2>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-soft">Productos que compramos ({comprados.length})</h2>
+                <a
+                href={`/api/export/forecast?${new URLSearchParams({ ...(sp.estado ? { estado: sp.estado } : {}), ...(sp.cat ? { cat: sp.cat } : {}), ...(sp.q ? { q: sp.q } : {}), tipo: "comprados" }).toString()}`}
+                className="whitespace-nowrap rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-rose-deep hover:border-blush"
+              >
+                Descargar planilla
+              </a>
+              </div>
               <Lista lista={comprados} hoy={hoy} />
             </section>
           )}
