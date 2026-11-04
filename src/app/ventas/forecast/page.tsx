@@ -110,7 +110,7 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
             </div>
             <div className="mt-2 flex items-center gap-2">
               <Barras semanas={f.semanas} />
-              <Tendencia t={f.tendencia} />
+              {!f.manual && <Tendencia t={f.tendencia} />}
             </div>
           </Card>
         ))}
