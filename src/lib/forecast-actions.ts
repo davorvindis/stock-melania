@@ -71,7 +71,7 @@ export async function importarHistorialWix() {
       lineas += filas.length;
       cursor = pag.next;
       if (!cursor) break;
-      if (Date.now() - t0 > 40_000) {
+      if (Date.now() - t0 > 48_000) {
         quedan = true;
         break;
       }
