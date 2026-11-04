@@ -12,9 +12,10 @@ import { db } from "./db";
 export type ConfigForecast = { demora: number; colchon: number; cubrir: number };
 export const CONFIG_DEFAULT: ConfigForecast = { demora: 30, colchon: 15, cubrir: 60 };
 
-export type Estado = "AGOTADO" | "PEDIR_YA" | "PRONTO" | "OK" | "SIN_VENTAS";
+export type Estado = "AGOTADO" | "FALTA" | "PEDIR_YA" | "PRONTO" | "OK" | "SIN_VENTAS";
 export const ESTADOS: Record<Estado, { label: string; clase: string }> = {
   AGOTADO: { label: "Sin stock", clase: "bg-red-100 text-red-800" },
+  FALTA: { label: "Falta hasta que llegue", clase: "bg-orange-100 text-orange-900" },
   PEDIR_YA: { label: "Pedir ya", clase: "bg-rose-deep text-white" },
   PRONTO: { label: "Pedir pronto", clase: "bg-amber-100 text-amber-900" },
   OK: { label: "Bien", clase: "bg-emerald-50 text-emerald-800" },
@@ -38,6 +39,7 @@ export type FilaForecast = {
   semanas: number[]; // últimas 12 semanas, de la más vieja a la última
   diasHistoria: number;
   seAcaba: string | null; // fecha estimada en que se queda sin stock (null = más de un año)
+  hueco: { desde: string; hasta: string } | null; // se queda sin stock antes de que llegue lo pedido
   diasStock: number | null;
   pedirAntes: string | null;
   sugerido: number;
@@ -200,16 +202,26 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     const enCamino = ll.reduce((s, x) => s + x.qty, 0);
     let s = libre.get(p.id) ?? 0;
     let seAcaba: number | null = null;
+    let hueco: { desde: string; hasta: string } | null = null;
     if (base > 0) {
+      const ultimaLlegada = ll.reduce<string | null>((a, x) => (!a || x.dia > a ? x.dia : a), null);
       for (let d = 0; d < 366; d++) {
         const f = sumar(hoy, d);
         for (const x of ll) if (x.dia === f) s += x.qty;
+        if (hueco && !hueco.hasta && s > 0) hueco.hasta = f;
         s -= ritmo(d);
         if (s <= 0) {
+          // si todavía tiene que llegar algo, es un faltante transitorio: lo que no hay no se vende
+          if (ultimaLlegada && ultimaLlegada > f) {
+            if (!hueco) hueco = { desde: f, hasta: "" };
+            s = 0;
+            continue;
+          }
           seAcaba = d;
           break;
         }
       }
+      if (hueco && !hueco.hasta) hueco = null;
     }
     const horizonte = cfg.demora + cfg.cubrir;
     let necesidad = 0;
@@ -221,6 +233,7 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
     let estado: Estado = "OK";
     if (base <= 0) estado = "SIN_VENTAS";
     else if ((libre.get(p.id) ?? 0) <= 0 && enCamino <= 0) estado = "AGOTADO";
+    else if (hueco) estado = "FALTA";
     else if (pedirAntes && pedirAntes <= hoy) estado = sugerido > 0 ? "PEDIR_YA" : "OK";
     else if (pedirAntes && pedirAntes <= sumar(hoy, 14)) estado = sugerido > 0 ? "PRONTO" : "OK";
 
@@ -248,6 +261,7 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       semanas,
       diasHistoria: disp,
       seAcaba: seAcaba !== null ? sumar(hoy, seAcaba) : null,
+      hueco,
       diasStock: seAcaba,
       pedirAntes,
       sugerido,
@@ -255,7 +269,7 @@ export async function getForecast(cfg: ConfigForecast): Promise<{ filas: FilaFor
       incluye: incluye.get(p.id) ?? null,
     });
   }
-  const orden: Record<Estado, number> = { AGOTADO: 0, PEDIR_YA: 1, PRONTO: 2, OK: 3, SIN_VENTAS: 4 };
+  const orden: Record<Estado, number> = { AGOTADO: 0, FALTA: 1, PEDIR_YA: 2, PRONTO: 3, OK: 4, SIN_VENTAS: 5 };
   filas.sort((a, b) => Number(b.propio) - Number(a.propio) || orden[a.estado] - orden[b.estado] || (a.diasStock ?? 9999) - (b.diasStock ?? 9999) || b.porSemana - a.porSemana);
   const sinVincular = ((sueltas ?? []) as { description: string; quantity: number | null; received_qty: number }[])
     .filter((l) => l.quantity == null || Number(l.received_qty) < Number(l.quantity))

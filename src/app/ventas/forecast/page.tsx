@@ -17,12 +17,13 @@ const FILTROS: [string, string][] = [
   ["", "Para comprar"],
   ["todos", "Todos con ventas"],
   ["AGOTADO", "Sin stock"],
+  ["FALTA", "Falta hasta que llegue"],
   ["PEDIR_YA", "Pedir ya"],
   ["PRONTO", "Pedir pronto"],
   ["OK", "Bien"],
   ["SIN_VENTAS", "Sin ventas"],
 ];
-const PARA_COMPRAR: Estado[] = ["AGOTADO", "PEDIR_YA", "PRONTO"];
+const PARA_COMPRAR: Estado[] = ["AGOTADO", "FALTA", "PEDIR_YA", "PRONTO"];
 
 function redondeo(n: number) {
   if (n >= 100) return Math.round(n);
@@ -54,6 +55,11 @@ function Chip({ e }: { e: Estado }) {
 
 function frase(f: FilaForecast, hoy: string) {
   if (f.estado === "SIN_VENTAS") return "No tuvo ventas en los últimos meses.";
+  const falta = f.hueco
+    ? `Se queda sin stock el ${fmtDate(f.hueco.desde)} y lo pedido llega el ${fmtDate(f.hueco.hasta)}: unos ${Math.round(
+        (Date.parse(f.hueco.hasta) - Date.parse(f.hueco.desde)) / 86400000
+      )} días sin stock. Conviene adelantar la entrega. `
+    : "";
   const acaba = f.seAcaba
     ? f.diasStock === 0
       ? "Ya no alcanza el stock libre"
@@ -65,7 +71,7 @@ function frase(f: FilaForecast, hoy: string) {
         ? `. ${f.propio ? "Hay que fabricar ya" : "Hacé la orden de compra ya"}: unas ${fmtQty(f.sugerido)} u.`
         : `. ${f.propio ? "Fabricá" : "Hacé la orden"} antes del ${fmtDate(f.pedirAntes)}: unas ${fmtQty(f.sugerido)} u.`
       : ".";
-  return acaba + pedir;
+  return falta + acaba + pedir;
 }
 
 function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
@@ -159,6 +165,11 @@ function Lista({ lista, hoy }: { lista: FilaForecast[]; hoy: string }) {
                   ) : (
                     <span className="text-soft">+1 año</span>
                   )}
+                  {f.hueco && (
+                    <div className="text-xs font-medium text-orange-800">
+                      Falta del {fmtDate(f.hueco.desde)} al {fmtDate(f.hueco.hasta)}
+                    </div>
+                  )}
                 </td>
                 <td className={td}>
                   {f.sugerido > 0 && f.pedirAntes ? (
@@ -216,8 +227,8 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
         compra pendientes) y cuándo y cuánto conviene pedir. Es una estimación: revisala antes de comprar.
       </p>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {(["AGOTADO", "PEDIR_YA", "PRONTO", "OK"] as Estado[]).map((e) => (
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {(["AGOTADO", "FALTA", "PEDIR_YA", "PRONTO", "OK"] as Estado[]).map((e) => (
           <Link key={e} href={`/ventas/forecast?estado=${e}`} className="block">
             <Card className={sp.estado === e ? "ring-2 ring-rose-deep" : ""}>
               <div className="text-sm text-soft">{ESTADOS[e].label}</div>

@@ -321,7 +321,7 @@ export const MANUAL: Capitulo[] = [
     bloques: [
       P("**Para qué sirve:** con lo que se viene vendiendo, prevé hasta cuándo alcanza cada producto y te dice cuándo hacer la orden de compra y más o menos cuántas unidades pedir. Está en **Ventas → Forecast**."),
       L([
-        "Arriba ves cuántos productos están **Sin stock**, para **Pedir ya**, para **Pedir pronto** (en las próximas 2 semanas) y **Bien**. Tocá una tarjeta para ver esos productos.",
+        "Arriba ves cuántos productos están **Sin stock**, **Falta hasta que llegue** (se acaba antes de que llegue lo que ya está pedido: conviene adelantar la entrega), para **Pedir ya**, para **Pedir pronto** (en las próximas 2 semanas) y **Bien**. Tocá una tarjeta para ver esos productos.",
         "Arriba van los productos de **Fabricación propia** (monodosis, Pro Glue, Pro Lash, Lash One, Elixir, Hidraluxe, Easy gel, Perm, Setting y Mousse): se ven siempre y te dice cuándo y cuánto **fabricar**. Debajo, **los que compramos**, solo los que hay que pedir. Con el filtro ves todos, o por categoría, o buscás uno.",
         "Para marcar o desmarcar un producto como propio: **Productos** → abrir el producto → tilde **Fabricación propia**.",
         "**Monodosis Botox:** el blister x4 y la unidad suelta se cuentan juntos, en unidades sueltas (cada blister son 4). Aparece una sola fila, la de la unidad suelta, que dice cuántos blisters incluye.",
