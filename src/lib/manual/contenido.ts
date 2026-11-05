@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "4 de noviembre de 2026";
+export const ACTUALIZADO = "5 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -198,7 +198,10 @@ export const MANUAL: Capitulo[] = [
     id: "proveedores",
     titulo: "Proveedores y Ubicaciones",
     ver: { s: ["proveedores", "ubicaciones"] },
-    bloques: [P("Las listas de proveedores/laboratorios y de lugares donde hay mercadería de Melania.")],
+    bloques: [
+      P("Las listas de proveedores/laboratorios y de lugares donde hay mercadería de Melania."),
+      P("**Mandarle mercadería a un proveedor** (packaging, envases o producto para fabricar): Proveedores → abrir el proveedor → tildar **Recibe mercadería** → Guardar. Desde ahí aparece como **destino** en Nuevo movimiento (Transferencia o Envío a proveedor) y en Stock como una ubicación más. Lo que se le manda sigue siendo de Melania y no se ofrece en la web. Para destildarlo, la ubicación tiene que estar vacía.", { s: ["proveedores"] }),
+    ],
   },
   {
     id: "wix",

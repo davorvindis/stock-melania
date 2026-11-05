@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "./db";
 import { requireSection, requireRole, can, ubicacionFija, type Profile } from "./auth";
-import { NEEDS_DESTINATION, OPERABLE_TYPES } from "./types";
+import { NEEDS_DESTINATION, OPERABLE_TYPES, fmtQty } from "./types";
 import { BUCKET_COMPROBANTES, subirComprobante } from "./comprobantes";
 
 function backWithError(path: string, message: string): never {
@@ -1032,7 +1032,42 @@ const editarProveedorSchema = z.object({
   telefono: z.string().trim().optional(),
   notas: z.string().trim().optional(),
   activo: z.string().optional(),
+  recibe: z.string().optional(),
 });
+
+// "Recibe mercadería": el proveedor tiene su ubicación (destino en transferencias / envío a
+// proveedor). Tildado → se crea o se reactiva; destildado → se desactiva (solo si está vacía).
+async function sincronizarUbicacionProveedor(proveedor: string, nombre: string, recibe: boolean, back: string) {
+  const cli = db();
+  let { data: loc } = await cli.from("locations").select("id, name, active").eq("supplier_id", proveedor).maybeSingle();
+  if (!recibe) {
+    if (!loc?.active) return "";
+    const { data: saldo } = await cli.from("stock_balances").select("quantity").eq("location_id", loc.id).gt("quantity", 0);
+    const unidades = (saldo ?? []).reduce((s, r) => s + Number(r.quantity), 0);
+    if (unidades > 0) {
+      backWithError(back, `${loc.name} todavía tiene ${fmtQty(unidades)} unidad(es) de mercadería. Traela de vuelta antes de destildar "Recibe mercadería".`);
+    }
+    const { error } = await cli.from("locations").update({ active: false }).eq("id", loc.id);
+    if (error) backWithError(back, error.message);
+    return ". Ya no aparece como destino";
+  }
+  if (!loc) {
+    // si ya había una ubicación con el mismo nombre (sin proveedor), se vincula esa
+    const { data: mismo } = await cli.from("locations").select("id, name, active").ilike("name", nombre).is("supplier_id", null).maybeSingle();
+    loc = mismo;
+  }
+  if (loc) {
+    const { error } = await cli.from("locations").update({ supplier_id: proveedor, active: true }).eq("id", loc.id);
+    if (error) backWithError(back, error.message);
+    if (loc.name !== nombre) await cli.from("locations").update({ name: nombre }).eq("id", loc.id); // si el nombre está tomado, queda el anterior
+    return loc.active ? "" : `. ${nombre} vuelve a aparecer como destino`;
+  }
+  const { error } = await cli.from("locations").insert({ name: nombre, supplier_id: proveedor });
+  if (error) {
+    backWithError(back, error.code === "23505" ? `Ya hay otra ubicación llamada "${nombre}" vinculada a otro proveedor` : error.message);
+  }
+  return `. ${nombre} ya aparece como destino en transferencias`;
+}
 
 export async function editarProveedor(formData: FormData) {
   const user = await requireSection("proveedores");
@@ -1056,11 +1091,12 @@ export async function editarProveedor(formData: FormData) {
   if (error) {
     backWithError(back, error.code === "23505" ? `El proveedor "${d.nombre}" ya existe` : error.message);
   }
+  const ubicacion = await sincronizarUbicacionProveedor(d.proveedor, d.nombre, d.recibe === "on", back);
   await db().from("audit_logs").insert({
     actor: user.alias, action: "supplier:update", entity: "suppliers", entity_id: d.proveedor,
-    detail: { name: d.nombre },
+    detail: { name: d.nombre, recibe_mercaderia: d.recibe === "on" },
   });
-  okRedirect(back, "Proveedor actualizado");
+  okRedirect(back, `Proveedor actualizado${ubicacion}`);
 }
 
 export async function eliminarProveedor(formData: FormData) {

@@ -16,7 +16,10 @@ export default async function EditarProveedor({
   await requireSection("proveedores");
   const { id } = await params;
   const { ok, error } = await searchParams;
-  const { data: s } = await db().from("suppliers").select("*").eq("id", id).maybeSingle();
+  const [{ data: s }, { data: ubic }] = await Promise.all([
+    db().from("suppliers").select("*").eq("id", id).maybeSingle(),
+    db().from("locations").select("name, active").eq("supplier_id", id).maybeSingle(),
+  ]);
   if (!s) {
     return (
       <div>
@@ -70,6 +73,16 @@ export default async function EditarProveedor({
             <input type="checkbox" name="activo" defaultChecked={s.active} className="h-4 w-4 accent-rose-deep" />
             Activo
           </label>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="recibe" defaultChecked={!!ubic?.active} className="h-4 w-4 accent-rose-deep" />
+              Recibe mercadería (aparece como destino en transferencias)
+            </label>
+            <p className="ml-6 mt-0.5 text-xs text-soft">
+              Para mandarle packaging, envases o producto a fabricar. Lo que se le manda sigue siendo
+              stock de Melania y se ve en Stock como ubicación &quot;{ubic?.name ?? s.name}&quot;.
+            </p>
+          </div>
           <SubmitButton className={button}>Guardar cambios</SubmitButton>
         </form>
       </Card>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getSuppliers } from "@/lib/queries";
+import { db } from "@/lib/db";
 import { crearProveedor } from "@/lib/actions";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
 
@@ -14,7 +15,12 @@ export default async function Proveedores({
 }) {
   await requireSection("proveedores");
   const { ok, error } = await searchParams;
-  const suppliers = await getSuppliers();
+  const [suppliers, { data: ubics }] = await Promise.all([
+    getSuppliers(),
+    db().from("locations").select("supplier_id").eq("active", true).not("supplier_id", "is", null),
+  ]);
+  const reciben = new Set((ubics ?? []).map((u) => u.supplier_id as string));
+  const tag = <span className="ml-2 rounded bg-blush-100 px-1.5 py-0.5 text-[11px] font-medium text-rose-deep">Recibe mercadería</span>;
 
   return (
     <div className="max-w-3xl">
@@ -48,7 +54,7 @@ export default async function Proveedores({
         {suppliers.map((s) => (
           <Link key={s.id} href={`/proveedores/${s.id}`} className="block rounded-lg border border-blush-100 bg-white p-3 hover:border-blush">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium">{s.name}</span>
+              <span className="text-sm font-medium">{s.name}{reciben.has(s.id) && tag}</span>
               <span className="text-xs text-soft">{s.active ? "Activo" : "Inactivo"}</span>
             </div>
             <div className="mt-1 text-xs text-soft">
@@ -72,7 +78,7 @@ export default async function Proveedores({
           <tbody>
             {suppliers.map((s) => (
               <tr key={s.id} className="border-b border-blush-100">
-                <td className={td}>{s.name}</td>
+                <td className={td}>{s.name}{reciben.has(s.id) && tag}</td>
                 <td className={td}>{s.cuit ?? "—"}</td>
                 <td className={td}>{s.contact ?? "—"}</td>
                 <td className={td}>{s.active ? "Activo" : "Inactivo"}</td>
