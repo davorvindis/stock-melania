@@ -45,6 +45,8 @@ export type ItemPedido = {
   unit_price: number | null;
   resolved: boolean;
   note: string | null;
+  settled_action: "DESCONTADO" | "DESCARTADO" | null;
+  settled_note: string | null;
   reservations: {
     id: string;
     per_unit: number;
@@ -135,7 +137,7 @@ export async function getPedidoWix(id: string): Promise<{ pedido: PedidoWix; ite
     cli.from("channel_orders").select(SELECT).eq("id", id).maybeSingle(),
     cli
       .from("channel_order_items")
-      .select("id, external_line_id, external_sku, name, quantity, unit_price, resolved, note, reservations(id, per_unit, quantity, consumed, released, to_return, refunded_kept, status, sale_type, product:products(id, sku, name, unit))")
+      .select("id, external_line_id, external_sku, name, quantity, unit_price, resolved, note, settled_action, settled_note, reservations(id, per_unit, quantity, consumed, released, to_return, refunded_kept, status, sale_type, product:products(id, sku, name, unit))")
       .eq("order_id", id)
       .order("external_line_id"),
     cli.from("channel_order_fulfillments").select("id, quantity, actor, created_at, wix_synced, wix_error, item_id").eq("order_id", id).order("created_at"),

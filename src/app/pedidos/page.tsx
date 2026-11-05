@@ -23,6 +23,12 @@ const ESTADOS: [string, string][] = [
   ["IGNORED", "Ignorados"],
 ];
 
+// Wix numera el pedido recién cuando se aprueba el pago: mientras la clienta no termina de pagar
+// (checkout abandonado o pago en proceso) queda INITIALIZED con N° 0. Si después paga, es el
+// mismo pedido y toma número; si reintenta, Wix crea otro pedido nuevo.
+const sinTerminar = (p: { wix_status: string | null; number: string | null }) => p.wix_status === "INITIALIZED" || !p.number || p.number === "0";
+const numeroPedido = (p: { wix_status: string | null; number: string | null }) => (sinTerminar(p) && (!p.number || p.number === "0") ? "Sin N°" : `#${p.number}`);
+
 export default async function PedidosPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireSection("pedidos");
   const sp = await searchParams;
@@ -120,10 +126,11 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         {pedidos.map((p) => (
           <Link key={p.id} href={`/pedidos/${p.id}`} className={`block rounded-xl border bg-white p-3 ${demorado(p) ? "border-red-300" : "border-blush-100"}`}>
             <div className="flex items-center justify-between">
-              <span className="font-semibold">#{p.number ?? "—"}</span>
+              <span className="font-semibold">{numeroPedido(p)}</span>
               {badgeEstado(p)}
             </div>
             <div className="text-sm">{p.customer ?? p.email ?? "—"}</div>
+            {sinTerminar(p) && <div className="text-xs text-soft">pago sin terminar</div>}
             {metodoEntrega(p).clave !== "NINGUNA" && <div className="mt-1">{badgeEntrega(p)}</div>}
             <div className="text-xs text-soft">
               {canal(p)} · {p.ordered_at ? fmtDateTime(p.ordered_at) : "—"} · {fmtMoney(p.total)}
@@ -158,7 +165,8 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               {pedidos.map((p) => (
                 <tr key={p.id} className={`border-b border-blush-100 ${demorado(p) ? "bg-red-50" : ""}`}>
                   <td className={`${td} font-semibold`}>
-                    <Link href={`/pedidos/${p.id}`} className="text-rose-deep hover:underline">#{p.number ?? "—"}</Link>
+                    <Link href={`/pedidos/${p.id}`} className="text-rose-deep hover:underline">{numeroPedido(p)}</Link>
+                    {sinTerminar(p) && <div className="text-xs font-normal text-soft">pago sin terminar</div>}
                   </td>
                   <td className={td}>{p.ordered_at ? fmtDateTime(p.ordered_at) : "—"}</td>
                   <td className={td}>{canal(p)}</td>

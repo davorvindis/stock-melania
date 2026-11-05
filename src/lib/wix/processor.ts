@@ -134,6 +134,9 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   }
   // pedido editado en Wix: antes de despachar la reserva sigue a Wix (cantidades, productos sacados);
   // ya despachado no se toca (lo agregado va en un pedido nuevo)
+  // líneas sacadas en Wix que todavía no tenían reserva (ej. pedido editado antes de pagarse)
+  const dr = await cli.rpc("wix_drop_removed_items", { p_order_id: orderId, p_actor: ACTOR });
+  if (dr.error) throw new Error(`wix_drop_removed_items: ${dr.error.message}`);
   const ed = await cli.rpc("wix_sync_order_items", { p_order_id: orderId, p_actor: ACTOR });
   if (ed.error) throw new Error(`wix_sync_order_items: ${ed.error.message}`);
   const edicion = ed.data as { resultado: string; avisos?: string[] };

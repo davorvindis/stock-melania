@@ -231,6 +231,10 @@ export const MANUAL: Capitulo[] = [
           ["**Retirado**", "La clienta lo pasó a buscar por el local (o fue una venta del POS)."],
           ["**Reembolsado**", "Se devolvió todo: sale de Procesados, Despachados y Retirados."],
         ]),
+        L([
+          "**Sin N° · pago sin terminar** (filtro Sin pagar): la clienta empezó a pagar en la web pero no terminó (abandonó o el pago quedó en proceso). Wix pone el número recién cuando aprueba el pago. Si después paga, toma número; si vuelve a intentar, Wix crea otro pedido, por eso a veces la misma clienta aparece primero sin número y después con número. Los que no tienen número no reservan ni descuentan nada.",
+          "**Editar un pedido en Wix antes de que esté pagado** (por ejemplo uno parcialmente pago): si Wix te hace sacar el ítem y agregarlo de nuevo con otra cantidad, en Melania la línea sacada aparece **tachada** con \"Sacado del pedido en Wix: no descuenta stock\". Al pagarse se reserva solo lo que quedó en Wix. Mientras no está pagado, los productos dicen \"Se reserva cuando se pague\".",
+        ]),
       ]),
       S("Cómo armar y despachar un pedido", [
         N([

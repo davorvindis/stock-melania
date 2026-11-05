@@ -328,6 +328,19 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                 {items.map((it) => {
                   const pend = pendientesItem(it);
                   const hist = porItem.get(it.id) ?? [];
+                  // línea sacada del pedido en Wix antes de reservarse: no descuenta nada
+                  if (it.settled_action === "DESCARTADO" && it.reservations.length === 0) {
+                    return (
+                      <tr key={it.id} className="border-b border-blush-100 align-top text-soft">
+                        <td className={`${td} font-mono text-xs line-through`}>{it.external_sku ?? "—"}</td>
+                        <td className={`${td} line-through`}>{it.name ?? "—"}</td>
+                        <td className={`${td} line-through`}>{fmtQty(it.quantity)}</td>
+                        <td className={`${td} text-xs`} colSpan={puedeProcesar ? 4 : 3}>
+                          {it.settled_note ?? "Descartado"}: no descuenta stock
+                        </td>
+                      </tr>
+                    );
+                  }
                   return (
                     <tr key={it.id} className="border-b border-blush-100 align-top">
                       <td className={`${td} font-mono text-xs`}>{it.external_sku ?? "—"}</td>
@@ -340,7 +353,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                                 {fmtQty(rv.quantity)} × {rv.product.name} <span className="text-soft">({rv.product.sku}{rv.sale_type === "WHOLESALE_SALE" ? " · mayorista" : ""})</span>
                               </div>
                             ))
-                          : <span className="font-medium text-amber-800">{it.note ?? "Sin equivalencia"} · <Link href="/equivalencias" className="text-rose-deep hover:underline">cargar</Link></span>}
+                          : !it.note && p.state === "NEW"
+                            ? <span className="text-soft">Se reserva cuando se pague</span>
+                            : <span className="font-medium text-amber-800">{it.note ?? "Sin equivalencia"} · <Link href="/equivalencias" className="text-rose-deep hover:underline">cargar</Link></span>}
                         {it.resolved && it.reservations.length === 0 && <span className="text-soft">(vendido directo)</span>}
                       </td>
                       <td className={`${td} text-xs`}>

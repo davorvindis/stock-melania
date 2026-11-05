@@ -184,3 +184,19 @@ test("venta sin SKU en Wix: con el producto ya mapeado se completa el SKU y se r
     assert.equal((await t.items(o.id))[0].external_sku, sku);
     assert.equal(await t.disponible(p.id, deposito), 8);
   }));
+
+test("pedido editado en Wix antes de pagarse: la línea sacada no se reserva al pagar", { skip: sinBase }, () =>
+  enTransaccion(async (t) => {
+    const { deposito } = await t.ubicaciones();
+    const p = await t.producto({ stock: { [deposito]: 100 } });
+    const sku = await t.equivalencia([{ producto: p, cantidad: 1 }]);
+    // Wix: sacaron la línea 1 (10 u.) y agregaron la 2 (25 u.)
+    const o = await t.pedido({ items: [{ sku, cantidad: 10 }, { sku, cantidad: 25 }] });
+    await t.filas(`update channel_orders set payment_status = 'PARTIALLY_PAID', raw = raw || '{"lineItems":[{"id":"linea-2"}]}'::jsonb where id = $1`, [o.id]);
+    assert.equal(await t.valor(`select wix_drop_removed_items($1, 'test')`, [o.id]), 1);
+    // al pagarse, reserva solo lo que quedó en Wix
+    await t.filas(`select wix_reserve_order($1, 'test')`, [o.id]);
+    assert.equal(await t.disponible(p.id, deposito), 75);
+    // correrlo de nuevo no cambia nada
+    assert.equal(await t.valor(`select wix_drop_removed_items($1, 'test')`, [o.id]), 0);
+  }));
