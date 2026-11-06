@@ -14,7 +14,8 @@ import {
   subaCostoDesde,
   vigenteEn,
 } from "@/lib/precios";
-import { eliminarCambioPrecio, guardarCondicionesMayoristas, guardarItemPrecio } from "@/lib/precios-actions";
+import { editarCambioPrecio, eliminarCambioPrecio, guardarCondicionesMayoristas, guardarItemPrecio, traerPreciosWixAhora } from "@/lib/precios-actions";
+import { QUIEN_WIX, ultimaLecturaWix } from "@/lib/precios-wix";
 import { nombreMes } from "@/lib/compras";
 import { fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, th, td } from "@/components/ui";
@@ -61,12 +62,13 @@ export default async function Precios({ searchParams }: { searchParams: Promise<
   const sp = await searchParams;
   const vista = VISTAS.some(([v]) => v === sp.vista) ? sp.vista! : "lista";
   const hoy = hoyAR();
-  const [items, cambios, condiciones, costos, productos] = await Promise.all([
+  const [items, cambios, condiciones, costos, productos, lecturaWix] = await Promise.all([
     getItemsPrecio(),
     getCambios(),
     getCondiciones(),
     getCostosPorProducto(),
     getProducts(),
+    ultimaLecturaWix(),
   ]);
   const cond = condiciones.find((c) => c.effective_date <= hoy) ?? condiciones[0];
   const porItem = new Map<string, typeof cambios>();
@@ -122,6 +124,27 @@ export default async function Precios({ searchParams }: { searchParams: Promise<
         </div>
       </div>
       <Flash ok={sp.ok} error={sp.error} />
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blush-100 bg-white px-3 py-2 text-sm">
+        <div>
+          <b>Precios de Wix:</b>{" "}
+          {lecturaWix ? (
+            <>
+              se leyeron el {new Date(lecturaWix.at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              {lecturaWix.cambios ? ` · ${lecturaWix.cambios} cambio(s) nuevo(s)` : " · sin cambios"}
+            </>
+          ) : (
+            "todavía no se leyeron"
+          )}
+          <span className="block text-xs text-soft">
+            Se actualizan solos todos los días a la mañana. Lo que se cambie en Wix aparece en el historial como &quot;{QUIEN_WIX}&quot;.
+            {lecturaWix?.sinPagina.length ? ` ${lecturaWix.sinPagina.length} producto(s) no se encontraron en Wix: ${lecturaWix.sinPagina.slice(0, 5).join(", ")}${lecturaWix.sinPagina.length > 5 ? "…" : ""} (revisá su página web en editar).` : ""}
+          </span>
+        </div>
+        <form action={traerPreciosWixAhora}>
+          <SubmitButton className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium hover:border-blush">Traer precios de Wix ahora</SubmitButton>
+        </form>
+      </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card>
@@ -434,6 +457,15 @@ export default async function Precios({ searchParams }: { searchParams: Promise<
                         <td className={`${td} text-xs text-soft`}>
                           {c.note}
                           {c.created_by ? <span className="block">{c.created_by}</span> : null}
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-rose-deep">editar nota</summary>
+                            <form action={editarCambioPrecio} className="mt-1 flex min-w-56 flex-col gap-1">
+                              <input type="hidden" name="cambio" value={c.id} />
+                              <input type="date" name="fecha" defaultValue={c.effective_date.slice(0, 10)} aria-label="Rige desde" className="rounded border border-line px-2 py-1 text-xs" />
+                              <input type="text" name="nota" defaultValue={c.note ?? ""} placeholder="ej. Lo cambió Yura en Wix" aria-label="Nota" className="rounded border border-line px-2 py-1 text-xs" />
+                              <SubmitButton className="self-start rounded bg-rose-deep px-2 py-1 text-xs font-semibold text-white">Guardar</SubmitButton>
+                            </form>
+                          </details>
                         </td>
                         <td className={td}>
                           <form action={eliminarCambioPrecio}>

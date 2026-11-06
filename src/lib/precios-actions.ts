@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { requireSection } from "./auth";
 import { getCambios, vigenteEn } from "./precios";
+import { traerPreciosWix } from "./precios-wix";
 
 function volverConError(path: string, msg: string): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`);
@@ -164,4 +165,33 @@ export async function guardarCondicionesMayoristas(formData: FormData) {
     detail: { fecha: f.data, min_20: m20, min_30: m30, min_40: m40 },
   });
   volverOk(back, "Condiciones mayoristas actualizadas");
+}
+
+// botón "Traer precios de Wix ahora"
+export async function traerPreciosWixAhora() {
+  const user = await requireSection("precios");
+  const back = "/precios?vista=historial";
+  let r;
+  try {
+    r = await traerPreciosWix(user.alias);
+  } catch (e) {
+    volverConError(back, (e as Error).message.slice(0, 250));
+  }
+  volverOk(back, r.cambios ? `Se registraron ${r.cambios} cambio(s) de precio de Wix` : `Precios al día: ${r.revisados} productos iguales a Wix`);
+}
+
+// nota y fecha de un cambio (ej. "lo cambió Yura en Wix", o la fecha real si se detectó al día siguiente)
+export async function editarCambioPrecio(formData: FormData) {
+  const user = await requireSection("precios");
+  const back = "/precios?vista=historial";
+  const id = uuid.safeParse(String(formData.get("cambio") ?? ""));
+  const f = fecha.safeParse(String(formData.get("fecha") ?? ""));
+  if (!id.success || !f.success) volverConError(back, "Datos inválidos");
+  const nota = String(formData.get("nota") ?? "").trim() || null;
+  const { error } = await db().from("price_changes").update({ note: nota, effective_date: f.data }).eq("id", id.data);
+  if (error) volverConError(back, error.message);
+  await db().from("audit_logs").insert({
+    actor: user.alias, action: "price:edit_note", entity: "price_changes", entity_id: id.data, detail: { nota, fecha: f.data },
+  });
+  volverOk(back, "Cambio actualizado");
 }

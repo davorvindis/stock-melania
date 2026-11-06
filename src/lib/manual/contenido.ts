@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "5 de noviembre de 2026";
+export const ACTUALIZADO = "6 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -476,6 +476,7 @@ export const MANUAL: Capitulo[] = [
       L([
         solo("**Órdenes de compra:** pedidos a proveedores y recepción de la mercadería.", { s: ["compras"] }),
         solo("**Costos** e **Historial de precios**.", { s: ["costos", "precios"] }),
+        solo("**Precios y Wix:** los precios se cambian en **Wix**. Todos los días a la mañana la app lee los precios publicados y, si alguno cambió, lo anota en el **Historial de cambios** como \"Wix (automático)\", con cuánto subió y el nuevo precio mayorista. Para que se vea al momento, tocá **Traer precios de Wix ahora**. En cada cambio, **editar nota** sirve para anotar quién lo hizo o corregir la fecha si se cambió el día anterior.", { s: ["precios"] }),
         solo("**Configuración:** usuarios, PIN, permisos (qué pestañas ve cada uno), y ubicación fija. Lo que habilites acá aparece solo en el manual de esa persona.", { s: ["configuracion"] }),
       ]),
     ],
