@@ -8,6 +8,8 @@ import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marc
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { marcarAvisoCliente } from "@/lib/pedidos-aviso-actions";
+import { esDemorado } from "@/lib/pedidos-listos";
 import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
 
 export const dynamic = "force-dynamic";
@@ -263,6 +265,32 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
 
       {puedeEntregar && (
         <Card className="mt-3 border-emerald-200 bg-emerald-50">
+          {esRetiro && (
+            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${p.customer_notified_at ? "border-emerald-200 bg-white" : esDemorado(p.processed_at) ? "border-red-300 bg-red-50" : "border-amber-300 bg-amber-50"}`}>
+              {p.customer_notified_at ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    ✅ <b>Clienta avisada</b> por {p.customer_notified_by} el {fmtDateTime(p.customer_notified_at)}. Falta que lo pase a buscar.
+                  </span>
+                  <form action={marcarAvisoCliente}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <input type="hidden" name="deshacer" value="1" />
+                    <SubmitButton className="text-xs text-soft underline hover:text-ink">Deshacer aviso</SubmitButton>
+                  </form>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <b>{esDemorado(p.processed_at) ? "Hace más de 1 día hábil que está listo y" : "Todavía"} nadie le avisó a la clienta</b> que lo puede pasar a buscar.
+                  </span>
+                  <form action={marcarAvisoCliente}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <SubmitButton className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Avisé a la clienta</SubmitButton>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
           <p className="text-sm">
             <b className="text-emerald-900">Armado y listo.</b> Cuando salga del local, marcalo:
           </p>

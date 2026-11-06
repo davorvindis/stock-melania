@@ -6,6 +6,7 @@ import { fmtDateTime, fmtMoney } from "@/lib/types";
 import { actualizarPedidosAhora } from "@/lib/wix/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { esDemorado } from "@/lib/pedidos-listos";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,20 @@ const ESTADOS: [string, string][] = [
 // mismo pedido y toma número; si reintenta, Wix crea otro pedido nuevo.
 const sinTerminar = (p: { wix_status: string | null; number: string | null }) => p.wix_status === "INITIALIZED" || !p.number || p.number === "0";
 const numeroPedido = (p: { wix_status: string | null; number: string | null }) => (sinTerminar(p) && (!p.number || p.number === "0") ? "Sin N°" : `#${p.number}`);
+
+// armado y todavía en el local: para retirar (¿se avisó a la clienta?) o por enviar
+function avisoListo(p: PedidoWix) {
+  if (p.state !== "PROCESSED" || p.delivery_status || p.channel_type === "POS") return null;
+  const dem = esDemorado(p.processed_at);
+  if (metodoEntrega(p).clave === "RETIRO") {
+    return p.customer_notified_at ? (
+      <div className="text-xs text-emerald-800">✅ Avisada por {p.customer_notified_by}</div>
+    ) : (
+      <div className={`text-xs font-medium ${dem ? "text-red-700" : "text-amber-800"}`}>Sin avisar a la clienta{dem ? " (+1 día hábil)" : ""}</div>
+    );
+  }
+  return dem ? <div className="text-xs font-medium text-red-700">Listo hace +1 día hábil sin despachar</div> : null;
+}
 
 export default async function PedidosPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireSection("pedidos");
@@ -138,6 +153,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
             {p.processed_by && <div className="text-xs text-soft">Procesó: {p.processed_by}</div>}
             {p.delivered_by && <div className="text-xs text-soft">{p.delivery_status === "PICKED_UP" ? "Entregó" : "Despachó"}: {p.delivered_by}</div>}
             {demorado(p) && <div className="text-xs font-medium text-red-700">Pagado hace más de 3 días sin procesar</div>}
+            {avisoListo(p)}
             {p.review_reason && <div className="text-xs font-medium text-amber-800">⚠ {p.review_reason}</div>}
           </Link>
         ))}
@@ -179,6 +195,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                   <td className={td}>
                     {badgeEstado(p)}
                     {demorado(p) && <div className="text-xs font-medium text-red-700">+3 días sin procesar</div>}
+                    {avisoListo(p)}
                   </td>
                   <td className={td}>
                     {p.processed_by ?? ""}

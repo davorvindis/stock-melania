@@ -26,6 +26,8 @@ export type PedidoWix = {
   delivery_status: "DISPATCHED" | "PICKED_UP" | null; // después de procesado: salió del local
   delivered_at: string | null;
   delivered_by: string | null;
+  customer_notified_at: string | null; // para retirar: cuándo se le avisó a la clienta que está listo
+  customer_notified_by: string | null;
   tracking_number: string | null; // seguimiento Correo Argentino
   tracking_synced: boolean;
   tracking_error: string | null;
@@ -86,7 +88,7 @@ export const ESTADOS_ENTREGA: Record<"DISPATCHED" | "PICKED_UP", string> = {
   PICKED_UP: "Retirado",
 };
 
-const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, delivery_status, delivered_at, delivered_by, tracking_number, tracking_synced, tracking_error, refund_resolution, refund_resolved_at, refund_resolved_by, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
+const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, delivery_status, delivered_at, delivered_by, customer_notified_at, customer_notified_by, tracking_number, tracking_synced, tracking_error, refund_resolution, refund_resolved_at, refund_resolved_by, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
 
 export const PEDIDOS_POR_PAGINA = 50;
 // delivery_rank (columna calculada en la base, misma regla que metodoEntrega)

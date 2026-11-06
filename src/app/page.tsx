@@ -6,6 +6,8 @@ import { getPendientes } from "@/lib/preventa";
 import { cierresSinVer } from "@/lib/caja";
 import { contarPendientesCF } from "@/lib/caja-fuerte";
 import { getAvisosWix } from "@/lib/wix/queries";
+import { getPedidosListos } from "@/lib/pedidos-listos";
+import { TarjetaPedidosListos } from "@/components/pedidos-listos";
 import { getBalances, getMovements, getCounts, getSeparables, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -41,7 +43,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
   const veCierres = user.role === "ADMIN" && can(user, "caja");
   const vePedidos = can(user, "pedidos");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -52,6 +54,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     veCierres ? contarPendientesCF() : Promise.resolve(0),
     vePedidos ? getAvisosWix() : Promise.resolve(null),
     getSeparables(),
+    vePedidos ? getPedidosListos() : Promise.resolve(null),
   ]);
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
@@ -195,6 +198,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <Link href="/pedidos" className="font-medium text-rose-deep hover:underline">Armar →</Link>
           </p>
         </Card>
+      )}
+      {listos && (
+        <div className="mt-4">
+          <TarjetaPedidosListos r={listos} />
+        </div>
       )}
       {wix && wix.revisar.length > 0 && (
         <Card className="mt-4 border-amber-200">

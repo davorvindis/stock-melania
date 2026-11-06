@@ -4,7 +4,9 @@ import Link from "next/link";
 import { Bebas_Neue, Montserrat } from "next/font/google";
 import { Nav } from "@/components/nav";
 import { SinRuedaEnNumeros } from "@/components/sin-rueda-en-numeros";
-import { getSessionUser, allowedSections } from "@/lib/auth";
+import { getSessionUser, allowedSections, can } from "@/lib/auth";
+import { getPedidosListos } from "@/lib/pedidos-listos";
+import { BannerPedidosListos } from "@/components/pedidos-listos";
 import { logout } from "@/lib/auth-actions";
 import { db } from "@/lib/db";
 import "./globals.css";
@@ -20,9 +22,13 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   const conMenu = user && !user.must_change_pin;
-  const ubicacion = user?.location_id
-    ? (await db().from("locations").select("name").eq("id", user.location_id).maybeSingle()).data?.name
-    : null;
+  const [ubicacion, listos] = await Promise.all([
+    user?.location_id
+      ? db().from("locations").select("name").eq("id", user.location_id).maybeSingle().then((r) => r.data?.name ?? null)
+      : null,
+    // recordatorio de pedidos armados que no salieron: para quien trabaja con Pedidos Wix
+    conMenu && can(user, "pedidos") ? getPedidosListos().catch(() => null) : null,
+  ]);
 
   return (
     <html lang="es" className={`${bebas.variable} ${montserrat.variable}`}>
@@ -65,6 +71,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <Nav sections={allowedSections(user)} />
               </div>
             </header>
+            {listos && <BannerPedidosListos r={listos} />}
             <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
           </>
         ) : (
