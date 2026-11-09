@@ -443,8 +443,11 @@ async function disponiblePublicable(s: WixSettings, pids?: string[]): Promise<Ma
   if (pids) q = q.in("product_id", pids);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
+  // se suma Depósito + Store y recién ahí se corta en 0: si el Depósito tiene más reservado que
+  // stock (negativo), lo del Store lo compensa y no se puede volver a ofrecer en la web
   const disp = new Map<string, number>();
-  for (const r of data ?? []) disp.set(r.product_id, (disp.get(r.product_id) ?? 0) + Math.max(0, Number(r.available)));
+  for (const r of data ?? []) disp.set(r.product_id, (disp.get(r.product_id) ?? 0) + Number(r.available));
+  for (const [k, v] of disp) disp.set(k, Math.max(0, v));
   return disp;
 }
 
