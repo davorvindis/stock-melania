@@ -10,6 +10,7 @@ import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { marcarAvisoCliente } from "@/lib/pedidos-aviso-actions";
 import { esDemorado } from "@/lib/pedidos-listos";
+import { getFeriados } from "@/lib/feriados";
 import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   const r = await getPedidoWix(id);
   if (!r) notFound();
   const { pedido: p, items, fulfillments, reembolsos } = r;
-  const [settings, revisiones] = await Promise.all([getWixSettings(), getRevisionesPedido(id)]);
+  const [settings, revisiones, feriados] = await Promise.all([getWixSettings(), getRevisionesPedido(id), getFeriados()]);
   const puedeRevisar = user.role === "ADMIN" || user.role === "MANAGER";
   const disp = p.location?.id ? await getDisponibles(p.location.id, items.flatMap((i) => i.reservations.map((x) => x.product.id))) : new Map();
   const pendientes = items.map((i) => ({ item: i, pend: pendientesItem(i) })).filter((x) => x.pend > 0);
@@ -172,9 +173,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           </ul>
         </details>
       )}
-      {demorado(p) && (
+      {demorado(p, feriados) && (
         <Card className="mt-3 border-red-300 bg-red-50">
-          <p className="text-sm font-medium text-red-800">Pagado hace más de 3 días y todavía no se procesó.</p>
+          <p className="text-sm font-medium text-red-800">Pagado hace más de 3 días hábiles y todavía no se procesó.</p>
         </Card>
       )}
       {!settings.enabled && (
@@ -266,7 +267,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
       {puedeEntregar && (
         <Card className="mt-3 border-emerald-200 bg-emerald-50">
           {esRetiro && (
-            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${p.customer_notified_at ? "border-emerald-200 bg-white" : esDemorado(p.processed_at) ? "border-red-300 bg-red-50" : "border-amber-300 bg-amber-50"}`}>
+            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${p.customer_notified_at ? "border-emerald-200 bg-white" : esDemorado(p.processed_at, feriados) ? "border-red-300 bg-red-50" : "border-amber-300 bg-amber-50"}`}>
               {p.customer_notified_at ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
@@ -281,7 +282,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
-                    <b>{esDemorado(p.processed_at) ? "Hace más de 1 día hábil que está listo y" : "Todavía"} nadie le avisó a la clienta</b> que lo puede pasar a buscar.
+                    <b>{esDemorado(p.processed_at, feriados) ? "Hace más de 1 día hábil que está listo y" : "Todavía"} nadie le avisó a la clienta</b> que lo puede pasar a buscar.
                   </span>
                   <form action={marcarAvisoCliente}>
                     <input type="hidden" name="id" value={p.id} />

@@ -1,4 +1,5 @@
 import { ESTADOS_ENTREGA, ESTADOS_PEDIDO, type PedidoWix } from "@/lib/wix/queries";
+import { diasHabilesDesde } from "@/lib/dias-habiles";
 
 export function badgeEstado(p: PedidoWix) {
   if (p.refund_resolution) return <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">Reembolsado</span>;
@@ -18,8 +19,9 @@ export function badgeEstado(p: PedidoWix) {
 }
 
 // pagado hace más de 3 días y todavía sin procesar
-export function demorado(p: PedidoWix): boolean {
-  return (p.state === "RESERVED" || p.state === "PARTIAL") && !!p.paid_at && Date.now() - new Date(p.paid_at).getTime() > 3 * 86400_000;
+// pagado hace más de 3 días hábiles (lunes a viernes, sin feriados) y todavía sin procesar
+export function demorado(p: PedidoWix, feriados: Set<string>): boolean {
+  return (p.state === "RESERVED" || p.state === "PARTIAL") && !!p.paid_at && diasHabilesDesde(p.paid_at, feriados) > 3;
 }
 
 // método de entrega de Wix → grupo para armar (la moto pasa ~13 h, el correo hasta 18 h)

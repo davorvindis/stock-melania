@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "6 de noviembre de 2026";
+export const ACTUALIZADO = "10 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -241,7 +241,7 @@ export const MANUAL: Capitulo[] = [
       ]),
       S("Cómo armar y despachar un pedido", [
         N([
-          "Entrá a **Pedidos Wix**. En **Para armar** los pedidos vienen ordenados por **Entrega**: primero **motomensajería** (la moto pasa tipo 13 h), después **Correo Argentino** (hasta las 18 h) y al final **retiro en sucursal**; dentro de cada grupo, el más viejo primero. En rojo, los que llevan **más de 3 días** pagados sin procesar.",
+          "Entrá a **Pedidos Wix**. En **Para armar** los pedidos vienen ordenados por **Entrega**: primero **motomensajería** (la moto pasa tipo 13 h), después **Correo Argentino** (hasta las 18 h) y al final **retiro en sucursal**; dentro de cada grupo, el más viejo primero. En rojo, los que llevan **más de 3 días hábiles** pagados sin procesar (sin contar fines de semana ni feriados).",
           "Armá el pedido y abrilo en el sistema.",
           "Si va por **Correo Argentino**, cargá el **N° de seguimiento** en el campo de arriba del botón (si todavía no lo tenés, se carga después desde el pedido).",
           "Tocá **Marcar como procesado (armado)**. Recién ahí se **descuenta del stock**, primero el lote que vence antes, y quedás registrado como responsable. Wix marca el pedido como procesado solo y, si cargaste el seguimiento, la clienta recibe el email con el número.",
@@ -250,7 +250,8 @@ export const MANUAL: Capitulo[] = [
           "Cuando el paquete **sale del local**, tocá **Marcar como despachado** o **Marcar como retirado**. El sistema pregunta **\"¿Confirmás?\"** para que no se toque por error.",
           "Si el botón no coincide con cómo se cargó el pedido en Wix (por ejemplo, **Retiro en sucursal** y tocás **Despachado**, o **Correo/Moto** y tocás **Retirado**), sale un cartel de **ATENCIÓN** para confirmarlo. Si la clienta cambió de idea, confirmá; si te equivocaste de botón, cancelá.",
         ]),
-        P("**Recordatorio de pedidos listos:** el Dashboard muestra cuántos pedidos están esperando ser retirados (y cuántos sin avisar a la clienta) y cuántos faltan enviar por moto o correo. Si alguno lleva **más de 1 día hábil** (lunes a viernes) desde que se procesó, aparece además una **franja amarilla arriba de todas las pantallas** hasta que se avise a la clienta o salga el pedido. Un pedido procesado el viernes recién aparece el martes."),
+        P("**Recordatorio de pedidos listos:** el Dashboard muestra cuántos pedidos están esperando ser retirados (y cuántos sin avisar a la clienta) y cuántos faltan enviar por moto o correo. Si alguno lleva **más de 1 día hábil** (lunes a viernes, sin contar feriados) desde que se procesó, aparece además una **franja amarilla arriba de todas las pantallas** hasta que se avise a la clienta o salga el pedido. Un pedido procesado el viernes recién aparece el martes (el miércoles si el lunes es feriado)."),
+        P("Los **feriados nacionales** se toman solos de la lista oficial; los **puentes turísticos no laborables** cuentan como día hábil porque se trabaja. Un feriado que no está en la lista (por ejemplo, solo en CABA) lo cargan Joel o Mel en **Configuración → Feriados**."),
         P("La lista muestra **50 pedidos por página** (**← Anterior / Siguiente →** abajo) y se puede filtrar por estado, canal, método de entrega, fechas y con el buscador (N° de pedido, clienta o email). Marcar despachado o retirado **no mueve stock**."),
         P("Si alguien lo marca despachado o retirado por error, tocá **Deshacer** y vuelve a Procesado.", ENCARGADA),
         A("**No marques el pedido como procesado directo en Wix.** Hacelo siempre desde Stock Melania. Si alguien lo marca en Wix, el stock **no** se descuenta y el pedido queda con el aviso \"confirmá en Melania quién lo armó\": hay que abrirlo y tocar igual **Marcar como procesado (armado)**.", "Importante", "ambar"),
@@ -540,7 +541,7 @@ export const MANUAL: Capitulo[] = [
     titulo: "Avisos del Dashboard",
     bloques: [
       T(["Aviso", "Qué significa y qué hacer"], [
-        { c: ["**Pedidos pagados hace más de 3 días**", "Hay pedidos web reservados sin armar. Armarlos y marcarlos como procesados."], ver: { s: ["pedidos"] } },
+        { c: ["**Pedidos pagados hace más de 3 días hábiles**", "Hay pedidos web reservados sin armar. Armarlos y marcarlos como procesados."], ver: { s: ["pedidos"] } },
         { c: ["**Pedidos a revisar**", "Abrir el pedido y leer el motivo: reembolso, sin equivalencia, falta de stock (si dice \"hay N en el Store\", transferirlo al Depósito), marcado procesado en Wix o editado después de salir. Una vez resuelto, Yura, Mel o Joel escriben qué se hizo y tocan **Marcar como revisado**."], ver: { s: ["pedidos"] } },
         { c: ["**Ventas sin descontar**", "Resolver en Pedidos Wix → Sin descontar."], ver: { s: ["pedidos"] } },
         ["**Integración con Wix desconectada**", "Mientras tanto, las ventas se cargan a mano como antes."],

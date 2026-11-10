@@ -4,6 +4,8 @@ import { crearUsuario, blanquearPin, actualizarUsuario } from "@/lib/auth-action
 import { db } from "@/lib/db";
 import { getLocations } from "@/lib/queries";
 import { listarBackups } from "@/lib/backup";
+import { getFeriadosDetalle } from "@/lib/feriados";
+import { agregarFeriado, quitarFeriado, actualizarFeriados } from "@/lib/feriados-actions";
 import { fmtDate } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button } from "@/components/ui";
 
@@ -22,11 +24,15 @@ export default async function Configuracion({
 }) {
   const admin = await requireSection("configuracion");
   const { ok, error } = await searchParams;
-  const [{ data }, ubicaciones, backups] = await Promise.all([
+  const [{ data }, ubicaciones, backups, feriados] = await Promise.all([
     db().from("profiles").select("*").order("created_at"),
     getLocations(),
     listarBackups(),
+    getFeriadosDetalle(),
   ]);
+  const hoyAR = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  const proximos = Object.values(feriados.nacionales).flat().filter((f) => f.fecha >= hoyAR).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const fechaCorta = (f: string) => new Date(`${f}T12:00:00Z`).toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "numeric", year: "numeric", timeZone: "UTC" });
   const usuarios = (data ?? []) as (Profile & { created_at: string })[];
   const nombreUbic = new Map(ubicaciones.map((u) => [u.id, u.name]));
 
@@ -139,6 +145,55 @@ export default async function Configuracion({
         ) : (
           <p className="mt-3 text-sm text-soft">Todavía no hay copias automáticas guardadas.</p>
         )}
+      </Card>
+
+      <Card className="mb-6">
+        <h2 id="feriados" className="mb-1 font-semibold">Feriados</h2>
+        <p className="mb-3 text-sm text-soft">
+          Para los avisos de pedidos listos (&quot;más de 1 día hábil&quot;) no cuentan los sábados, domingos ni feriados. Los
+          nacionales se toman solos de la lista oficial; los <b>puentes turísticos no laborables</b> sí cuentan como día hábil
+          porque se trabaja. Si hay un feriado que no está (por ejemplo, solo en CABA), cargalo acá.
+        </p>
+        <form action={agregarFeriado} className="mb-3 flex flex-wrap items-end gap-2">
+          <div>
+            <label className={label}>Fecha</label>
+            <input type="date" name="fecha" required className={input} />
+          </div>
+          <div className="min-w-48 flex-1">
+            <label className={label}>Motivo</label>
+            <input type="text" name="nombre" required maxLength={80} placeholder="ej. Feriado en CABA por la visita del Papa" className={input} />
+          </div>
+          <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">Agregar feriado</SubmitButton>
+        </form>
+        {feriados.extra.length > 0 && (
+          <ul className="mb-3 space-y-1 text-sm">
+            {feriados.extra.map((f) => (
+              <li key={f.fecha} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blush-100 px-3 py-1.5">
+                <span>
+                  <b className="capitalize">{fechaCorta(f.fecha)}</b> · {f.nombre} <span className="text-xs text-soft">(cargado a mano)</span>
+                </span>
+                <form action={quitarFeriado}>
+                  <input type="hidden" name="fecha" value={f.fecha} />
+                  <SubmitButton className="text-xs text-soft hover:text-red-700">Quitar</SubmitButton>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <details>
+          <summary className="cursor-pointer text-sm font-medium text-rose-deep">Próximos feriados nacionales ({proximos.length})</summary>
+          <ul className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+            {proximos.map((f) => (
+              <li key={f.fecha}>
+                <span className="capitalize">{fechaCorta(f.fecha)}</span> · <span className="text-soft">{f.nombre}</span>
+              </li>
+            ))}
+            {proximos.length === 0 && <li className="text-soft">No se pudo leer la lista oficial todavía.</li>}
+          </ul>
+          <form action={actualizarFeriados} className="mt-2">
+            <SubmitButton className="text-xs font-medium text-rose-deep hover:underline">Actualizar lista oficial</SubmitButton>
+          </form>
+        </details>
       </Card>
 
       <h2 className="mb-2 font-display text-2xl tracking-wide">Usuarios</h2>

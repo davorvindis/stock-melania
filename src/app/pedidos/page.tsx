@@ -7,6 +7,7 @@ import { actualizarPedidosAhora } from "@/lib/wix/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { esDemorado } from "@/lib/pedidos-listos";
+import { getFeriados } from "@/lib/feriados";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +32,9 @@ const sinTerminar = (p: { wix_status: string | null; number: string | null }) =>
 const numeroPedido = (p: { wix_status: string | null; number: string | null }) => (sinTerminar(p) && (!p.number || p.number === "0") ? "Sin N°" : `#${p.number}`);
 
 // armado y todavía en el local: para retirar (¿se avisó a la clienta?) o por enviar
-function avisoListo(p: PedidoWix) {
+function avisoListo(p: PedidoWix, feriados: Set<string>) {
   if (p.state !== "PROCESSED" || p.delivery_status || p.channel_type === "POS") return null;
-  const dem = esDemorado(p.processed_at);
+  const dem = esDemorado(p.processed_at, feriados);
   if (metodoEntrega(p).clave === "RETIRO") {
     return p.customer_notified_at ? (
       <div className="text-xs text-emerald-800">✅ Avisada por {p.customer_notified_by}</div>
@@ -49,7 +50,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const estado = sp.estado ?? "pendientes";
   const pagina = Math.max(1, Number.parseInt(sp.pagina ?? "1", 10) || 1);
-  const [{ pedidos, total, porEntrega }, sinDescontar] = await Promise.all([
+  const [{ pedidos, total, porEntrega }, sinDescontar, feriados] = await Promise.all([
     getPedidosWix({
       estado: estado === "todos" ? undefined : estado,
       canal: sp.canal,
@@ -61,6 +62,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
       pagina,
     }),
     contarSinDescontar(),
+    getFeriados(),
   ]);
   const paginas = Math.max(1, Math.ceil(total / PEDIDOS_POR_PAGINA));
   const href = (patch: Partial<SP>) => {
@@ -139,7 +141,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
       {/* mobile */}
       <div className="space-y-2 md:hidden">
         {pedidos.map((p) => (
-          <Link key={p.id} href={`/pedidos/${p.id}`} className={`block rounded-xl border bg-white p-3 ${demorado(p) ? "border-red-300" : "border-blush-100"}`}>
+          <Link key={p.id} href={`/pedidos/${p.id}`} className={`block rounded-xl border bg-white p-3 ${demorado(p, feriados) ? "border-red-300" : "border-blush-100"}`}>
             <div className="flex items-center justify-between">
               <span className="font-semibold">{numeroPedido(p)}</span>
               {badgeEstado(p)}
@@ -152,8 +154,8 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
             </div>
             {p.processed_by && <div className="text-xs text-soft">Procesó: {p.processed_by}</div>}
             {p.delivered_by && <div className="text-xs text-soft">{p.delivery_status === "PICKED_UP" ? "Entregó" : "Despachó"}: {p.delivered_by}</div>}
-            {demorado(p) && <div className="text-xs font-medium text-red-700">Pagado hace más de 3 días sin procesar</div>}
-            {avisoListo(p)}
+            {demorado(p, feriados) && <div className="text-xs font-medium text-red-700">Pagado hace más de 3 días hábiles sin procesar</div>}
+            {avisoListo(p, feriados)}
             {p.review_reason && <div className="text-xs font-medium text-amber-800">⚠ {p.review_reason}</div>}
           </Link>
         ))}
@@ -179,7 +181,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
             </thead>
             <tbody>
               {pedidos.map((p) => (
-                <tr key={p.id} className={`border-b border-blush-100 ${demorado(p) ? "bg-red-50" : ""}`}>
+                <tr key={p.id} className={`border-b border-blush-100 ${demorado(p, feriados) ? "bg-red-50" : ""}`}>
                   <td className={`${td} font-semibold`}>
                     <Link href={`/pedidos/${p.id}`} className="text-rose-deep hover:underline">{numeroPedido(p)}</Link>
                     {sinTerminar(p) && <div className="text-xs font-normal text-soft">pago sin terminar</div>}
@@ -194,8 +196,8 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                   <td className={td}>{fmtMoney(p.total)}</td>
                   <td className={td}>
                     {badgeEstado(p)}
-                    {demorado(p) && <div className="text-xs font-medium text-red-700">+3 días sin procesar</div>}
-                    {avisoListo(p)}
+                    {demorado(p, feriados) && <div className="text-xs font-medium text-red-700">+3 días hábiles sin procesar</div>}
+                    {avisoListo(p, feriados)}
                   </td>
                   <td className={td}>
                     {p.processed_by ?? ""}

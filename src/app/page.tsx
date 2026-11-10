@@ -7,6 +7,8 @@ import { cierresSinVer } from "@/lib/caja";
 import { contarPendientesCF } from "@/lib/caja-fuerte";
 import { getAvisosWix } from "@/lib/wix/queries";
 import { getPedidosListos } from "@/lib/pedidos-listos";
+import { getFeriados } from "@/lib/feriados";
+import { demorado } from "@/components/pedido-badge";
 import { TarjetaPedidosListos } from "@/components/pedidos-listos";
 import { getBalances, getMovements, getCounts, getSeparables, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
@@ -43,7 +45,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
   const veCierres = user.role === "ADMIN" && can(user, "caja");
   const vePedidos = can(user, "pedidos");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -55,7 +57,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     vePedidos ? getAvisosWix() : Promise.resolve(null),
     getSeparables(),
     vePedidos ? getPedidosListos() : Promise.resolve(null),
+    vePedidos ? getFeriados() : Promise.resolve(new Set<string>()),
   ]);
+  // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
+  const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
 
   const fisico = balances.reduce((s, b) => s + Number(b.quantity), 0);
@@ -189,12 +194,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </p>
         </Card>
       )}
-      {wix && wix.demorados.length > 0 && (
+      {demorados.length > 0 && (
         <Card className="mt-4 border-red-200">
           <p className="text-sm">
-            <b className="text-red-800">{wix.demorados.length} pedido(s) web pagados hace más de 3 días sin procesar:</b>{" "}
-            {wix.demorados.slice(0, 6).map((p) => `#${p.number ?? "?"}`).join(", ")}
-            {wix.demorados.length > 6 && "…"}{" "}
+            <b className="text-red-800">{demorados.length} pedido(s) web pagados hace más de 3 días hábiles sin procesar:</b>{" "}
+            {demorados.slice(0, 6).map((p) => `#${p.number ?? "?"}`).join(", ")}
+            {demorados.length > 6 && "…"}{" "}
             <Link href="/pedidos" className="font-medium text-rose-deep hover:underline">Armar →</Link>
           </p>
         </Card>
