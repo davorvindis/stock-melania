@@ -248,7 +248,7 @@ export async function listarSkusV1(): Promise<SkuEnWix[]> {
     sku?: string;
     manageVariants?: boolean;
     inventoryItemId?: string;
-    stock?: { trackQuantity?: boolean; quantity?: number; inStock?: boolean };
+    stock?: { trackInventory?: boolean; trackQuantity?: boolean; quantity?: number; inStock?: boolean };
     variants?: { id: string; variant?: { sku?: string }; stock?: { trackQuantity?: boolean; quantity?: number } }[];
   };
   const out: SkuEnWix[] = [];
@@ -258,7 +258,8 @@ export async function listarSkusV1(): Promise<SkuEnWix[]> {
     });
     const ps = r.products ?? [];
     for (const p of ps) {
-      const tracked = p.stock?.trackQuantity ?? null;
+      // en el catálogo V1 el producto informa el seguimiento como stock.trackInventory
+      const tracked = p.stock?.trackInventory ?? p.stock?.trackQuantity ?? null;
       if (p.manageVariants && p.variants?.length) {
         for (const v of p.variants) {
           const sku = v.variant?.sku?.trim();

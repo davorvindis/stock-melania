@@ -522,7 +522,13 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
       l.push({ eq: e, quantity: disponibleSku(e, disp) });
       porProducto.set(e.wix_product_id, l);
     }
+    // tope de tiempo por corrida (la función corta a los 60 s): lo que no entra queda en cola para la próxima
+    const inicio = Date.now();
     for (const [productId, vars] of porProducto) {
+      if (Date.now() - inicio > 30_000) {
+        for (const v of vars) for (const l of v.eq.lines) conError.add(l.product_id);
+        continue;
+      }
       try {
         await fijarInventarioV1(productId, vars.map((v) => ({ variantId: v.eq.wix_variant_id!, quantity: v.quantity })));
         for (const v of vars) await marcar(v.eq.id, { wix_last_qty: v.quantity, wix_last_sync_at: ahora, wix_sync_error: null, wix_tracked: true });
