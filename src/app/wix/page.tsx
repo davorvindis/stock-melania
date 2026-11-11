@@ -96,7 +96,7 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
             <li><b>Mapear catálogo</b>: vincula cada SKU de <Link href="/equivalencias" className="text-rose-deep hover:underline">Equivalencias</Link> con su producto/variante en Wix. Hacelo al principio y cada vez que Joel cree productos nuevos.</li>
             <li><b>Sincronizar ahora</b>: procesa pendientes, sondea pedidos nuevos, manda fulfillments y publica stock (lo mismo que hace el cron).</li>
             <li><b>Publicar todo</b>: manda el disponible de Depósito + Store de todos los SKU a Wix.</li>
-            <li><b>Conciliar</b>: compara el stock que muestra Wix con el disponible de Melania y corrige las diferencias. Corre solo una vez por día.</li>
+            <li><b>Conciliar</b>: compara el stock que muestra Wix con el disponible de Melania y corrige las diferencias. Corre solo cada 30 minutos (Wix puede cambiar su cantidad por su cuenta, por ejemplo al reponer stock de un pedido cancelado o si alguien lo edita en el panel).</li>
           </ul>
         </Card>
         <Card>

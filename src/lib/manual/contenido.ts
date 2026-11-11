@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "10 de noviembre de 2026";
+export const ACTUALIZADO = "11 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -212,7 +212,7 @@ export const MANUAL: Capitulo[] = [
       S("El stock de la web sale de Melania", [
         L([
           "Wix muestra el stock **disponible** de Melania: **Depósito + Store**, menos lo reservado para pedidos sin armar y lo que está en cuarentena. Los kits y combos muestran cuántos se pueden armar.",
-          "Cada vez que se carga algo en Melania, Wix se actualiza solo en unos minutos. Una vez por día el sistema compara Wix con Melania y corrige cualquier diferencia.",
+          "Cada vez que se carga algo en Melania, Wix se actualiza solo en unos minutos. Cada 30 minutos el sistema compara Wix con Melania y corrige cualquier diferencia (por ejemplo si alguien cambió el stock a mano en Wix o Wix repuso unidades de un pedido cancelado). Por eso el stock de la web no se toca en Wix: se corrige en Melania.",
           "**Ya no se toca el stock en Wix a mano.** Si algo figura \"Agotado\" en la web pero lo tenemos, hay que cargarlo en Melania y en minutos vuelve a estar a la venta.",
         ]),
       ]),

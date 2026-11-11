@@ -627,9 +627,11 @@ export async function mapearCatalogo(actor: string): Promise<{ version: string; 
   return { version, mapeados, faltanEnWix: faltan, sobranEnWix: sobran, creadas, pedidos, sinSeguimiento: enWix.filter((s) => s.tracked === false).length };
 }
 
-// ── Conciliación diaria de inventario ───────────────────────────────
+// ── Conciliación de inventario (cada 30 min) ────────────────────────
 // Compara lo que muestra Wix con lo que publicaríamos. Las diferencias quedan
 // en auditoría y sus productos vuelven a la cola para publicarse de nuevo.
+
+const CONCILIAR_CADA = 30 * 60_000;
 
 export async function conciliarInventario(actor = ACTOR): Promise<{ revisados: number; diferencias: number }> {
   const s = await getWixSettings();
@@ -652,10 +654,14 @@ export async function conciliarInventario(actor = ACTOR): Promise<{ revisados: n
   const reencolar = new Set<string>();
   for (const e of lista) {
     const w = porSku.get(e.external_sku.toUpperCase());
-    if (!w || w.tracked !== true) continue; // sin seguimiento en Wix no hay cantidad que comparar
+    if (!w) continue;
+    // sin seguimiento en Wix no hay cantidad que comparar; pero si nosotros lo publicamos (o
+    // "activar seguimiento" está prendido) y alguien lo pasó a "En stock" en Wix, vende sin límite:
+    // se reencola para volver a fijar la cantidad con seguimiento
+    if (w.tracked !== true && !(s.enable_tracking || e.wix_tracked === true)) continue;
     revisados++;
     const nuestro = disponibleSku(e, disp);
-    if (w.quantity !== nuestro) {
+    if (w.tracked !== true || w.quantity !== nuestro) {
       difs.push({ sku: e.external_sku, wix: w.quantity, melania: nuestro });
       for (const l of e.lines) reencolar.add(l.product_id);
     }
@@ -690,9 +696,10 @@ export async function corridaSync(): Promise<Record<string, unknown>> {
   const poll = await sondearPedidos();
   const ful = await sincronizarFulfillments();
   await sincronizarSeguimientos().catch(() => {});
-  // una vez por día: conciliar antes de publicar, así lo que difiere sale en esta misma corrida
+  // cada 30 min: conciliar antes de publicar, así lo que difiere sale en esta misma corrida
+  // (Wix puede cambiar su cantidad solo: reposición al cancelar/reembolsar, o edición a mano en el panel)
   let conciliacion: Record<string, unknown> | null = null;
-  if (!s.last_reconcile_at || Date.now() - Date.parse(s.last_reconcile_at) > 86400_000) {
+  if (!s.last_reconcile_at || Date.now() - Date.parse(s.last_reconcile_at) > CONCILIAR_CADA) {
     conciliacion = await conciliarInventario().catch((e) => ({ error: (e as Error).message }));
   }
   const inv = await publicarInventario();
