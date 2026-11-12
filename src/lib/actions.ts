@@ -1301,10 +1301,21 @@ export async function desarmarKits(formData: FormData) {
   const d = parsed.data;
   const back = `/productos/${d.kit}`;
   exigirUbicacion(user, d.ubicacion, back);
-  const { error } = await db().rpc("disassemble_kits", {
+  // a qué lote vuelve cada componente (confirmado en pantalla)
+  let lotes: unknown;
+  try {
+    lotes = JSON.parse(String(formData.get("lotes") ?? ""));
+  } catch {
+    backWithError(back, "Faltan los lotes de los componentes");
+  }
+  const loteSchema = z.array(z.object({ component_id: uuid, lot_id: uuid.nullable(), quantity: z.number().nonnegative() }));
+  const lp = loteSchema.safeParse(lotes);
+  if (!lp.success) backWithError(back, "Los lotes de los componentes no son válidos");
+  const { error } = await db().rpc("disassemble_kits_lotes", {
     p_kit: d.kit,
     p_qty: d.cantidad,
     p_location: d.ubicacion,
+    p_lotes: lp.data,
     p_actor: user.alias,
     p_idem: d.idem,
   });

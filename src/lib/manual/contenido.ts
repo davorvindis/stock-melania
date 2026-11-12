@@ -190,7 +190,7 @@ export const MANUAL: Capitulo[] = [
         "Buscador y filtros por tipo, categoría y estado. En la compu, tocando el título de una columna se ordena.",
         "**+ Nuevo producto** (con opción de stock inicial). Tocando un producto se edita; con historial no se borra: se desactiva.",
         "**Tipos:** Producto terminado, Monodosis, Kit, Packaging, Granel y Accesorio.",
-        "**Armar kit:** nombre y SKU, y los productos con cuánto lleva cada uno. En la ficha del kit: **Armar** descuenta los componentes y suma kits; **Desarmar** hace lo contrario.",
+        "**Armar kit:** nombre y SKU, y los productos con cuánto lleva cada uno. En la ficha del kit: **Armar** descuenta los componentes y suma kits; **Desarmar** hace lo contrario: antes de confirmar muestra a qué lote vuelve cada componente (sugerido según con qué lotes se armaron los últimos kits). Si los kits son de tandas distintas, por ejemplo una devolución, cambiá el lote o tocá **+ otro lote** para repartir. Al vender, sale primero el lote que vence antes.",
       ]),
     ],
   },

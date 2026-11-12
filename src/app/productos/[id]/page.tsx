@@ -3,6 +3,7 @@ import { requireSection } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { editarProducto, eliminarProducto, guardarComponentesKit, armarKits, desarmarKits } from "@/lib/actions";
 import { KitBuilder } from "@/components/kit-builder";
+import { DesarmarKitForm, type ArmadoKit, type ComponenteDesarme } from "@/components/desarmar-kit-form";
 import { getKitComponents, getProducts, getBalances, getLocations } from "@/lib/queries";
 import { randomUUID } from "crypto";
 import { fmtQty } from "@/lib/types";
@@ -35,6 +36,7 @@ export default async function EditarProducto({
     ? await Promise.all([getKitComponents(id), getProducts(), getBalances(), getLocations()])
     : [[], [], [], []];
   const stockKit = balances.filter((b) => b.product.id === id);
+  const desarme = esKit && componentes.length ? await datosDesarme(id, componentes) : null;
   if (!p) {
     return (
       <div>
@@ -212,13 +214,24 @@ export default async function EditarProducto({
             >
               Armar
             </SubmitButton>
-            <SubmitButton
-              formAction={desarmarKits}
-              className="rounded-lg border border-line px-5 py-2.5 font-medium text-rose-deep hover:border-blush"
-            >
-              Desarmar
-            </SubmitButton>
           </form>
+          {desarme && (
+            <div className="mt-5 border-t border-line pt-4">
+              <h3 className="mb-1 text-sm font-semibold">Desarmar</h3>
+              <p className="mb-3 text-xs text-soft">
+                Antes de confirmar se muestra a qué lote vuelve cada componente (sugerido según con qué se
+                armaron los últimos kits) para que entren al stock con el lote correcto.
+              </p>
+              <DesarmarKitForm
+                kitId={p.id}
+                idem={randomUUID()}
+                ubicaciones={ubicaciones.map((u) => ({ id: u.id, name: u.name }))}
+                componentes={desarme.componentes}
+                armados={desarme.armados}
+                action={desarmarKits}
+              />
+            </div>
+          )}
         </Card>
       )}
 
@@ -240,4 +253,36 @@ export default async function EditarProducto({
       </Card>
     </div>
   );
+}
+
+// lotes de cada componente y con qué lotes se armaron los kits (del armado más nuevo al más viejo)
+async function datosDesarme(
+  kitId: string,
+  componentes: { quantity: number; component: { id: string; name: string } }[]
+): Promise<{ componentes: ComponenteDesarme[]; armados: ArmadoKit[] }> {
+  const ids = componentes.map((c) => c.component.id);
+  const [lotes, kitsArmados, compsArmados] = await Promise.all([
+    db().from("lots").select("id, product_id, code, expires_on").in("product_id", ids).order("expires_on", { ascending: false, nullsFirst: false }),
+    db().from("inventory_movements").select("idempotency_key, quantity, occurred_at").eq("product_id", kitId).eq("type", "KIT_ASSEMBLY").order("occurred_at", { ascending: false }).limit(200),
+    db().from("inventory_movements").select("product_id, lot_id, quantity, idempotency_key").in("product_id", ids).eq("type", "KIT_ASSEMBLY").like("idempotency_key", "%:c:%").order("occurred_at", { ascending: false }).limit(5000),
+  ]);
+  const porArmado = new Map<string, Record<string, { lot_id: string | null; qty: number }[]>>();
+  for (const m of compsArmados.data ?? []) {
+    const pref = String(m.idempotency_key).split(":c:")[0];
+    const r = porArmado.get(pref) ?? {};
+    (r[m.product_id] ??= []).push({ lot_id: m.lot_id, qty: Number(m.quantity) });
+    porArmado.set(pref, r);
+  }
+  const armados: ArmadoKit[] = (kitsArmados.data ?? [])
+    .filter((k) => k.idempotency_key?.endsWith(":kit"))
+    .map((k) => ({ kits: Number(k.quantity), comps: porArmado.get(k.idempotency_key!.slice(0, -4)) ?? {} }));
+  return {
+    componentes: componentes.map((c) => ({
+      id: c.component.id,
+      nombre: c.component.name,
+      porKit: Number(c.quantity),
+      lotes: (lotes.data ?? []).filter((l) => l.product_id === c.component.id).map((l) => ({ id: l.id, code: l.code, expires_on: l.expires_on })),
+    })),
+    armados,
+  };
 }
