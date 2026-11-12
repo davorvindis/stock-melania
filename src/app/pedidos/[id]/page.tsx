@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { randomUUID } from "crypto";
@@ -30,6 +31,9 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   // editado en Wix después de armar: unidades que hay que sacar del paquete (vuelven al stock al rearmar)
   const aSacar = items.flatMap((i) => i.reservations.filter((rv) => Number(rv.to_return) > 0).map((rv) => ({ item: i, rv })));
   const puedeProcesar = (p.state === "RESERVED" || p.state === "PARTIAL") && (pendientes.length > 0 || aSacar.length > 0);
+  // hay stock para este pedido, pero no alcanza para todos los reservados: se procesa con confirmación
+  const faltante = puedeProcesar ? await faltanteAlProcesar(p.id) : [];
+  const ENTREGA: Record<number, string> = { 1: "moto", 2: "correo", 3: "retiro" };
   // armado y listo: falta que salga (despacho o retiro por el local); el botón principal sigue el método de Wix
   const puedeEntregar = p.state === "PROCESSED" && p.channel_type !== "POS" && !p.delivery_status && aSacar.length === 0;
   const esRetiro = metodoEntrega(p).clave === "RETIRO";
@@ -458,8 +462,36 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           )}
           {puedeProcesar && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <SubmitButton className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
-                Marcar como procesado (armado)
+              {faltante.length > 0 && (
+                <div className="w-full rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+                  <input type="hidden" name="forzar" value="1" />
+                  <p className="font-semibold text-amber-900">No alcanza el stock para todos los pedidos reservados</p>
+                  {faltante.map((f) => (
+                    <div key={f.producto + f.ubicacion} className="mt-2">
+                      <p>
+                        <b>{f.producto}</b> en {f.ubicacion}: hay {fmtQty(f.vendibles)}, este pedido usa {fmtQty(f.propio)} y
+                        otros pedidos esperan {fmtQty(f.otros)}. Si lo procesás, faltan {fmtQty(f.propio + f.otros - f.vendibles)} para:
+                      </p>
+                      <ul className="ml-4 mt-1 list-disc text-xs">
+                        {f.pedidos.map((o) => (
+                          <li key={o.number}>
+                            #{o.number} {o.customer ?? ""} · {ENTREGA[o.delivery_rank] ?? "otro"} · {fmtQty(o.pend)} u.
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                  <p className="mt-2 text-xs text-amber-900">
+                    Procesalo si es más urgente (ej. sale en la moto de hoy). Los pedidos que queden sin stock pasan a
+                    &quot;a revisar&quot; para avisarle a la clienta.
+                  </p>
+                </div>
+              )}
+              <SubmitButton
+                confirmar={faltante.length ? `Al procesar este pedido quedan sin stock suficiente otros pedidos (${faltante.map((f) => f.producto).join(", ")}). ¿Confirmás que este es más urgente?` : undefined}
+                className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper"
+              >
+                {faltante.length ? "Procesar igual (más urgente)" : "Marcar como procesado (armado)"}
               </SubmitButton>
               <span className="text-xs text-soft">
                 Sale del stock con tu usuario. Si armás solo una parte, bajá las cantidades: el resto sigue reservado. Después lo
@@ -471,4 +503,19 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
       </form>
     </div>
   );
+}
+
+type Faltante = {
+  producto: string;
+  ubicacion: string;
+  vendibles: number;
+  propio: number;
+  otros: number;
+  pedidos: { number: string | null; customer: string | null; delivery_rank: number; pend: number }[];
+};
+
+async function faltanteAlProcesar(orderId: string): Promise<Faltante[]> {
+  const { data, error } = await db().rpc("wix_faltante_al_procesar", { p_order_id: orderId });
+  if (error) return [];
+  return ((data ?? []) as Faltante[]).map((f) => ({ ...f, vendibles: Number(f.vendibles), propio: Number(f.propio), otros: Number(f.otros) }));
 }

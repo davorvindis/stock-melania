@@ -70,7 +70,9 @@ export async function procesarPedido(formData: FormData) {
   const seguimiento = String(formData.get("seguimiento") ?? "").trim();
   const batchRaw = String(formData.get("batch") ?? "");
   const batch = uuid.safeParse(batchRaw).success ? batchRaw : null; // evita doble envío del mismo formulario
-  const { data, error } = await db().rpc("wix_process_order", {
+  // "forzar": el pedido es más urgente y se confirmó usar stock que esperan otros pedidos
+  const forzar = formData.get("forzar") === "1";
+  const { data, error } = await db().rpc(forzar ? "wix_process_order_forzado" : "wix_process_order", {
     p_order_id: id,
     p_lines: lineas,
     p_actor_id: user.id,
