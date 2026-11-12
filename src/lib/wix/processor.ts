@@ -79,7 +79,7 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   // ya despachado / retirado: lo que había antes de esta lectura, para detectar ediciones en Wix
   const previo = await cli
     .from("channel_orders")
-    .select("delivery_status, items:channel_order_items(external_line_id, quantity)")
+    .select("delivery_status, items:channel_order_items(external_line_id, quantity, settled_action)")
     .eq("channel", "WIX")
     .eq("external_id", n.external_id)
     .maybeSingle();
@@ -122,7 +122,10 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   // el paquete ya salió (despachado / retirado): no se rearma ni se toca el stock, solo se avisa si cambió
   const entrega = previo.data?.delivery_status as string | null | undefined;
   if (entrega) {
-    const antes = new Map((previo.data?.items ?? []).map((i) => [i.external_line_id, Number(i.quantity)]));
+    // las líneas sacadas en Wix antes de armar quedan registradas como DESCARTADO: no son parte del paquete
+    const antes = new Map(
+      (previo.data?.items ?? []).filter((i) => i.settled_action !== "DESCARTADO").map((i) => [i.external_line_id, Number(i.quantity)])
+    );
     const cambio = antes.size !== n.items.length || n.items.some((i) => antes.get(i.line_id) !== Number(i.quantity));
     const que = entrega === "PICKED_UP" ? "retirado" : "despachado";
     if (cambio) await cli.rpc("_wix_append_review", { p_order: orderId, p_text: `Editado en Wix después de ${que}: el paquete ya salió, revisar qué hacer con la diferencia` });
