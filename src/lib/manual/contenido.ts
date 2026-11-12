@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "11 de noviembre de 2026";
+export const ACTUALIZADO = "12 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -542,7 +542,7 @@ export const MANUAL: Capitulo[] = [
     bloques: [
       T(["Aviso", "Qué significa y qué hacer"], [
         { c: ["**Pedidos pagados hace más de 3 días hábiles**", "Hay pedidos web reservados sin armar. Armarlos y marcarlos como procesados."], ver: { s: ["pedidos"] } },
-        { c: ["**Pedidos a revisar**", "Abrir el pedido y leer el motivo: reembolso, sin equivalencia, falta de stock (si dice \"hay N en el Store\", transferirlo al Depósito), marcado procesado en Wix o editado después de salir. Una vez resuelto, Yura, Mel o Joel escriben qué se hizo y tocan **Marcar como revisado**."], ver: { s: ["pedidos"] } },
+        { c: ["**Pedidos a revisar**", "Abrir el pedido y leer el motivo: reembolso, sin equivalencia, falta de stock (si dice \"hay N en el Store\", transferirlo al Depósito), marcado procesado en Wix o editado después de salir. Una vez resuelto, Yura, Mel o Joel escriben qué se hizo y tocan **Marcar como revisado**. Los cursos y turnos (servicios o productos digitales de Wix) no entran como pedidos: no llevan equivalencia."], ver: { s: ["pedidos"] } },
         { c: ["**Ventas sin descontar**", "Resolver en Pedidos Wix → Sin descontar."], ver: { s: ["pedidos"] } },
         ["**Integración con Wix desconectada**", "Mientras tanto, las ventas se cargan a mano como antes."],
         { c: ["**Hay stock para N preventas**", "Entró mercadería de algo prevendido: entrar a Preventa y entregar."], ver: { s: ["preventa"] } },

@@ -101,10 +101,11 @@ export type PedidoNormalizado = {
   items: { line_id: string; sku: string | null; name: string | null; quantity: number; unit_price: number | null; wix_product_id: string | null; wix_variant_id: string }[];
 };
 
-// servicios (turnos de Wix Bookings): no son productos, no mueven stock
+// servicios (turnos de Wix Bookings) y productos digitales (ej. cursos cargados en la tienda):
+// no son productos físicos, no mueven stock
 const APP_BOOKINGS = "13d21c63-b5ec-5912-8397-c3a5ddb27a97";
 export function esServicio(li: NonNullable<WixOrder["lineItems"]>[number]): boolean {
-  return li.itemType?.preset === "SERVICE" || li.catalogReference?.appId === APP_BOOKINGS;
+  return li.itemType?.preset === "SERVICE" || li.itemType?.preset === "DIGITAL" || li.catalogReference?.appId === APP_BOOKINGS;
 }
 export function soloServicios(o: WixOrder): boolean {
   return (o.lineItems ?? []).length > 0 && (o.lineItems ?? []).every(esServicio);
