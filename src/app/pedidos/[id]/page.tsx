@@ -7,6 +7,7 @@ import { getDisponibles, getPedidoWix, getRevisionesPedido, pendientesItem, reem
 import { getWixSettings } from "@/lib/wix/processor";
 import { actualizarPedidoDesdeWix, guardarSeguimiento, marcarEntregaPedido, marcarPedidoRevisado, procesarPedido, reembolsarPedido, resolverReembolsoPos } from "@/lib/wix/actions";
 import { fmtDateTime, fmtMoney, fmtQty } from "@/lib/types";
+import { transferirDelStoreParaPedido } from "@/lib/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { marcarAvisoCliente } from "@/lib/pedidos-aviso-actions";
@@ -34,6 +35,8 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   // hay stock para este pedido, pero no alcanza para todos los reservados: se procesa con confirmación
   const faltante = puedeProcesar ? await faltanteAlProcesar(p.id) : [];
   const ENTREGA: Record<number, string> = { 1: "moto", 2: "correo", 3: "retiro" };
+  // falta en el Depósito (donde se arman los pedidos) y hay en el Store: se trae desde acá
+  const traerDelStore = puedeProcesar ? await faltaQueHayEnStore(p.location?.id ?? null, settings.location_store, items) : [];
   // armado y listo: falta que salga (despacho o retiro por el local); el botón principal sigue el método de Wix
   const puedeEntregar = p.state === "PROCESSED" && p.channel_type !== "POS" && !p.delivery_status && aSacar.length === 0;
   const esRetiro = metodoEntrega(p).clave === "RETIRO";
@@ -155,6 +158,33 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           ) : (
             <p className="mt-1 text-xs text-amber-800">Avisale a Yura, Mel o Joel para que lo resuelvan.</p>
           )}
+        </Card>
+      )}
+      {traerDelStore.length > 0 && (
+        <Card className="mt-3 border-amber-300 bg-amber-50">
+          <p className="text-sm font-semibold text-amber-900">Falta en el Depósito y hay en el Store</p>
+          {traerDelStore.map((t) => (
+            <form key={t.productId} action={transferirDelStoreParaPedido} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <input type="hidden" name="pedido" value={p.id} />
+              <input type="hidden" name="producto" value={t.productId} />
+              <input type="hidden" name="desde" value={t.desde} />
+              <input type="hidden" name="hacia" value={t.hacia} />
+              <input type="hidden" name="idem" value={randomUUID()} />
+              <span className="min-w-[12rem] flex-1">
+                <b>{t.nombre}</b>: faltan {fmtQty(t.falta)} en el Depósito, hay {fmtQty(t.enStore)} en el Store.
+              </span>
+              <input type="number" name="cantidad" min="1" max={t.enStore} step="any" defaultValue={t.sugerido} className="w-20 rounded-lg border border-line bg-white px-3 py-2 text-sm" />
+              <SubmitButton
+                confirmar={`¿Transferir ${fmtQty(t.sugerido)} de ${t.nombre} del Store al Depósito? (podés cambiar la cantidad antes)`}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+              >
+                Transferir del Store
+              </SubmitButton>
+            </form>
+          ))}
+          <p className="mt-2 text-xs text-amber-800">
+            Queda como transferencia con el N° de pedido y tu usuario. Después armá el pedido normal y marcá el aviso como revisado.
+          </p>
         </Card>
       )}
       {revisiones.length > 0 && (
@@ -518,4 +548,24 @@ async function faltanteAlProcesar(orderId: string): Promise<Faltante[]> {
   const { data, error } = await db().rpc("wix_faltante_al_procesar", { p_order_id: orderId });
   if (error) return [];
   return ((data ?? []) as Faltante[]).map((f) => ({ ...f, vendibles: Number(f.vendibles), propio: Number(f.propio), otros: Number(f.otros) }));
+}
+
+async function faltaQueHayEnStore(
+  deposito: string | null,
+  store: string | null,
+  items: { reservations: { status: string; product: { id: string; name: string } }[] }[]
+) {
+  if (!deposito || !store || deposito === store) return [];
+  const prods = new Map<string, string>();
+  for (const i of items) for (const r of i.reservations) if (r.status === "ACTIVE") prods.set(r.product.id, r.product.name);
+  if (!prods.size) return [];
+  const ids = [...prods.keys()];
+  const [dep, sto] = await Promise.all([getDisponibles(deposito, ids), getDisponibles(store, ids)]);
+  return ids.flatMap((id) => {
+    const d = dep.get(id);
+    const falta = d ? Math.max(0, d.reserved - d.sellable) : 0;
+    const enStore = Math.max(0, sto.get(id)?.available ?? 0);
+    const sugerido = Math.min(falta, enStore);
+    return sugerido > 0 ? [{ productId: id, nombre: prods.get(id)!, falta, enStore, sugerido, desde: store, hacia: deposito }] : [];
+  });
 }

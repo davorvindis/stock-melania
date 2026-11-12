@@ -1322,3 +1322,56 @@ export async function desarmarKits(formData: FormData) {
   if (error) backWithError(back, error.message);
   okRedirect(back, `${d.cantidad} kit(s) desarmado(s): componentes devueltos al stock`);
 }
+
+// ── Pedido web: traer del Store al Depósito lo que falta para armarlo ──
+// Los pedidos se arman en el Depósito; si el faltante está en el Store se transfiere desde el
+// mismo pedido (primero el lote que vence antes), con el N° de pedido como motivo.
+export async function transferirDelStoreParaPedido(formData: FormData) {
+  const user = await requireSection("pedidos");
+  const pedido = uuid.safeParse(formData.get("pedido"));
+  const producto = uuid.safeParse(formData.get("producto"));
+  const desde = uuid.safeParse(formData.get("desde"));
+  const hacia = uuid.safeParse(formData.get("hacia"));
+  const cantidad = numeroPositivo.safeParse(formData.get("cantidad"));
+  const idem = z.string().min(8).safeParse(formData.get("idem"));
+  const back = pedido.success ? `/pedidos/${pedido.data}` : "/pedidos";
+  if (!pedido.success || !producto.success || !desde.success || !hacia.success || !idem.success) backWithError(back, "Datos inválidos");
+  if (!cantidad.success) backWithError(back, "La cantidad debe ser mayor a 0");
+  exigirUbicacion(user, desde.data!, back);
+  const cli = db();
+  const [{ data: o }, { data: bal }] = await Promise.all([
+    cli.from("channel_orders").select("number, external_id").eq("id", pedido.data!).maybeSingle(),
+    cli
+      .from("stock_balances")
+      .select("lot_id, quantity, lot:lots(expires_on, status, sealed)")
+      .eq("product_id", producto.data!)
+      .eq("location_id", desde.data!)
+      .gt("quantity", 0),
+  ]);
+  if (!o) backWithError(back, "Pedido inexistente");
+  type B = { lot_id: string | null; quantity: number; lot: { expires_on: string | null; status: string; sealed: boolean } | null };
+  const filas = ((bal ?? []) as unknown as B[])
+    .filter((b) => !b.lot || (b.lot.status === "ACTIVE" && !b.lot.sealed))
+    .sort((a, b) => (a.lot?.expires_on ?? "9999").localeCompare(b.lot?.expires_on ?? "9999"));
+  let resto = cantidad.data!;
+  const lineas: { product_id: string; lot_id: string | null; from_location_id: string; quantity: number }[] = [];
+  for (const b of filas) {
+    if (resto <= 0) break;
+    const q = Math.min(resto, Number(b.quantity));
+    lineas.push({ product_id: producto.data!, lot_id: b.lot_id, from_location_id: desde.data!, quantity: q });
+    resto -= q;
+  }
+  if (resto > 0) backWithError(back, `En el Store no hay ${fmtQty(cantidad.data!)} disponibles para transferir`);
+  const num = o!.number ?? o!.external_id;
+  const { error } = await cli.rpc("apply_movement_batch", {
+    p_type: "TRANSFER",
+    p_to: hacia.data!,
+    p_actor: user.alias,
+    p_reason: `Pedido ${num}: faltaba en el Depósito`,
+    p_notes: "Transferido desde el pedido",
+    p_idem: idem.data!,
+    p_lines: lineas,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, `${fmtQty(cantidad.data!)} transferida(s) del Store al Depósito`);
+}
