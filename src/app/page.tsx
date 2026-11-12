@@ -6,6 +6,8 @@ import { getPendientes } from "@/lib/preventa";
 import { cierresSinVer } from "@/lib/caja";
 import { contarPendientesCF } from "@/lib/caja-fuerte";
 import { getAvisosWix } from "@/lib/wix/queries";
+import { getSaludWix } from "@/lib/wix/salud";
+import { FranjaSaludWix } from "@/components/salud-wix";
 import { getPedidosListos } from "@/lib/pedidos-listos";
 import { getFeriados } from "@/lib/feriados";
 import { demorado } from "@/components/pedido-badge";
@@ -45,7 +47,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // aviso de cierre de caja: solo administradores con la pestaña (Joel y Mel)
   const veCierres = user.role === "ADMIN" && can(user, "caja");
   const vePedidos = can(user, "pedidos");
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados] = await Promise.all([
+  // salud de la conexión con Wix: Joel, Mel y Yura (admin / encargada)
+  const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER";
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -58,6 +62,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     getSeparables(),
     vePedidos ? getPedidosListos() : Promise.resolve(null),
     vePedidos ? getFeriados() : Promise.resolve(new Set<string>()),
+    veSaludWix ? getSaludWix().catch(() => null) : Promise.resolve(null),
   ]);
   // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
   const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
@@ -134,6 +139,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return (
     <div>
       <PageTitle>Dashboard</PageTitle>
+      {saludWix && <FranjaSaludWix s={saludWix} conLink={user.role === "ADMIN" && can(user, "wix")} />}
 
       {cfPendientes > 0 && (
         <Card className="mb-4 border-amber-300 bg-amber-50">

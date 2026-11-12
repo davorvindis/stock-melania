@@ -468,7 +468,7 @@ export const MANUAL: Capitulo[] = [
         "**Pedidos que esperaban la equivalencia:** si entró una venta antes de cargar (o reactivar) la equivalencia, al guardarla el pedido se reserva solo y sale de **A revisar**; el mensaje dice cuántos pedidos se acomodaron. Los que ya salieron (despachados o retirados) no se tocan.",
         "**Venta de un producto que en Wix no tenía SKU:** cargale el SKU al producto en Wix y tocá **Mapear catálogo de Wix**. El sistema reconoce el producto en los pedidos que ya entraron, les completa el SKU y los reserva solos.",
         "**Publicar stock en Wix:** marca qué SKU reciben el stock de Melania; los internos \"MAYORISTA\" no lo reciben.",
-        "**Integración Wix:** conexión, opciones (publicar el disponible, activar seguimiento), **Publicar todo el disponible**, **Conciliar stock con Wix** y últimos eventos.",
+        "**Integración Wix:** conexión, **Estado de la conexión con Wix** (en verde, amarillo o rojo: la sincronización cada 5 min, el stock pendiente de mandar a la web, el control web contra sistema y los errores), opciones (publicar el disponible, activar seguimiento), **Publicar todo el disponible**, **Conciliar stock con Wix** y últimos eventos. Si algo está en rojo, el Dashboard muestra una franja roja a administradores y encargadas.",
       ]),
     ],
   },

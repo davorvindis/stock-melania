@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireRole, requireSection } from "@/lib/auth";
 import { getWixSettings } from "@/lib/wix/processor";
+import { getSaludWix } from "@/lib/wix/salud";
+import { PanelSaludWix } from "@/components/salud-wix";
 import { wixConfigurado } from "@/lib/wix/client";
 import { contarEventos, getEventosWix, resumenEquivalenciasWix } from "@/lib/wix/queries";
 import { cambiarOpcionesWix, cambiarPulsador, conciliarStockWix, mapearCatalogoWix, probarConexionWix, publicarTodoElStock, reintentarEvento, sincronizarAhora } from "@/lib/wix/actions";
@@ -16,7 +18,7 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
   await requireSection("wix");
   await requireRole("ADMIN");
   const sp = await searchParams;
-  const [s, eventos, conteo, eq] = await Promise.all([getWixSettings(), getEventosWix(), contarEventos(), resumenEquivalenciasWix()]);
+  const [s, eventos, conteo, eq, salud] = await Promise.all([getWixSettings(), getEventosWix(), contarEventos(), resumenEquivalenciasWix(), getSaludWix()]);
   const configurado = wixConfigurado();
   const pausados = conteo.PAUSED ?? 0;
 
@@ -68,6 +70,8 @@ export default async function WixPage({ searchParams }: { searchParams: Promise<
           </form>
         </div>
       </Card>
+
+      <PanelSaludWix s={salud} />
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Eventos pendientes" value={(conteo.PENDING ?? 0) + pausados} alert={(conteo.PENDING ?? 0) + pausados > 0} />

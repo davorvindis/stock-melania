@@ -38,6 +38,8 @@ export type WixSettings = {
   catalog_version: string | null;
   last_reconcile_at?: string | null;
   last_reconcile_diffs?: number | null;
+  last_reconcile_revisados?: number | null; // SKU que comparó (0 = no está revisando nada)
+  last_sync_at?: string | null; // última corrida automática completa (panel de salud)
 };
 
 export async function getWixSettings(): Promise<WixSettings> {
@@ -425,6 +427,7 @@ type Eq = {
   wix_variant_id: string | null;
   wix_inventory_item_id: string | null;
   wix_tracked: boolean | null;
+  wix_last_sync_at?: string | null;
   lines: EqLinea[];
 };
 
@@ -461,17 +464,19 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
   // productos en cola (o todos). Se recuerda cuándo se leyó: lo encolado después no se borra.
   const leidoEn = new Date().toISOString();
   let productos: string[] = [];
+  const encoladoEn = new Map<string, string>(); // producto → cuándo se encoló
   if (!todo) {
-    const q = await cli.from("wix_sync_queue").select("product_id").lte("queued_at", leidoEn).limit(500);
+    const q = await cli.from("wix_sync_queue").select("product_id, queued_at").lte("queued_at", leidoEn).limit(500);
     if (q.error) throw new Error(q.error.message);
     productos = (q.data ?? []).map((r) => r.product_id);
+    for (const r of q.data ?? []) encoladoEn.set(r.product_id, r.queued_at);
     if (productos.length === 0) return { skus: 0, errores: 0, omitidos: 0 };
   }
   const conError = new Set<string>(); // productos cuyo SKU falló: quedan en cola para reintentar
   // equivalencias afectadas
   let eqq = cli
     .from("channel_skus")
-    .select("id, external_sku, active, wix_product_id, wix_variant_id, wix_inventory_item_id, wix_tracked, lines:channel_sku_lines(product_id, quantity)")
+    .select("id, external_sku, active, wix_product_id, wix_variant_id, wix_inventory_item_id, wix_tracked, wix_last_sync_at, lines:channel_sku_lines(product_id, quantity)")
     .eq("active", true)
     .eq("publish_stock", true); // los MAYORISTA (marcadores internos) no reciben stock
   if (!todo) {
@@ -525,9 +530,19 @@ export async function publicarInventario(todo = false): Promise<{ skus: number; 
       l.push({ eq: e, quantity: disponibleSku(e, disp) });
       porProducto.set(e.wix_product_id, l);
     }
-    // tope de tiempo por corrida (la función corta a los 60 s): lo que no entra queda en cola para la próxima
+    // tope de tiempo por corrida (la función corta a los 60 s): lo que no entra queda en cola para la próxima.
+    // Un producto vendido puede tocar decenas de productos de Wix (packs, combos): para que la cola avance,
+    // se saltean los que ya se publicaron después de encolarse y se empieza por los que hace más que no se publican.
     const inicio = Date.now();
-    for (const [productId, vars] of porProducto) {
+    const ultima = (vars: { eq: Eq }[]) => vars.reduce((m, v) => (!v.eq.wix_last_sync_at || v.eq.wix_last_sync_at < m ? v.eq.wix_last_sync_at ?? "" : m), "9999");
+    const yaPublicado = (vars: { eq: Eq }[]) => {
+      if (todo) return false;
+      const enCola = vars.flatMap((v) => v.eq.lines.map((l) => encoladoEn.get(l.product_id))).filter(Boolean) as string[];
+      const ult = ultima(vars);
+      return enCola.length > 0 && !!ult && ult !== "9999" && enCola.every((q) => ult > q);
+    };
+    const orden = [...porProducto].filter(([, vars]) => !yaPublicado(vars)).sort((a, b) => ultima(a[1]).localeCompare(ultima(b[1])));
+    for (const [productId, vars] of orden) {
       if (Date.now() - inicio > 30_000) {
         for (const v of vars) for (const l of v.eq.lines) conError.add(l.product_id);
         continue;
@@ -682,7 +697,7 @@ export async function conciliarInventario(actor = ACTOR): Promise<{ revisados: n
   if (difs.length) {
     await cli.from("audit_logs").insert({ actor, action: "wix:inventory_diff", entity: "channel_skus", entity_id: null, detail: { revisados, diferencias: difs.slice(0, 200) } });
   }
-  await patchWixSettings({ last_reconcile_at: new Date().toISOString(), last_reconcile_diffs: difs.length }, actor);
+  await patchWixSettings({ last_reconcile_at: new Date().toISOString(), last_reconcile_diffs: difs.length, last_reconcile_revisados: revisados }, actor);
   return { revisados, diferencias: difs.length };
 }
 
@@ -712,5 +727,6 @@ export async function corridaSync(): Promise<Record<string, unknown>> {
     conciliacion = await conciliarInventario().catch((e) => ({ error: (e as Error).message }));
   }
   const inv = await publicarInventario();
+  await patchWixSettings({ last_sync_at: new Date().toISOString() }, ACTOR).catch(() => {});
   return { enabled: true, pendientes: pend, poll, fulfillments: ful, conciliacion, inventario: inv };
 }
