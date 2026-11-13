@@ -577,6 +577,59 @@ export async function revisarConteo(formData: FormData) {
   );
 }
 
+// revisión producto por producto: cada diferencia se aprueba (ajusta ya) o va a revisar (se recuenta)
+export async function revisarConteoPorLinea(formData: FormData) {
+  const user = await requireRole("ADMIN");
+  const conteo = uuid.safeParse(formData.get("conteo"));
+  if (!conteo.success) backWithError("/conteos", "Conteo inválido");
+  const back = `/conteos/${conteo.data}`;
+  const motivo = String(formData.get("motivo") ?? "").trim();
+  if (motivo.length < 3) backWithError(back, "Indicá el motivo de la decisión");
+  const aprobar: string[] = [];
+  const revisar: { line_id: string; note: string }[] = [];
+  for (const [k, v] of formData.entries()) {
+    if (!k.startsWith("decision_")) continue;
+    const lineId = k.slice(9);
+    if (!uuid.safeParse(lineId).success) backWithError(back, "Línea inválida");
+    if (v === "aprobar") aprobar.push(lineId);
+    else if (v === "revisar") revisar.push({ line_id: lineId, note: String(formData.get(`nota_${lineId}`) ?? "").trim() });
+  }
+  const { data, error } = await db().rpc("review_count_lines", {
+    p_count: conteo.data,
+    p_actor: user.alias,
+    p_aprobar: aprobar,
+    p_revisar: revisar,
+    p_reason: motivo,
+  });
+  if (error) backWithError(back, error.message);
+  okRedirect(
+    back,
+    data === "RECOUNT"
+      ? `${aprobar.length} producto(s) aprobado(s) y ajustado(s). ${revisar.length} quedan a revisar: el equipo los recuenta.`
+      : "Conteo aprobado: se generaron los ajustes de stock."
+  );
+}
+
+// recuento de los productos marcados a revisar
+export async function guardarRecuento(formData: FormData) {
+  const user = await requireSection("conteos");
+  const conteo = uuid.safeParse(formData.get("conteo"));
+  if (!conteo.success) backWithError("/conteos", "Conteo inválido");
+  const back = `/conteos/${conteo.data}`;
+  const cerrar = formData.get("cerrar") === "1";
+  const lines: { line_id: string; counted: string }[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("recuento_") && String(value).trim() !== "") {
+      const n = Number(value);
+      if (isNaN(n) || n < 0) backWithError(back, "Las cantidades deben ser números mayores o iguales a 0");
+      lines.push({ line_id: key.slice(9), counted: String(value) });
+    }
+  }
+  const { error } = await db().rpc("save_recount_lines", { p_count: conteo.data, p_lines: lines, p_actor: user.alias, p_cerrar: cerrar });
+  if (error) backWithError(back, error.message);
+  okRedirect(back, cerrar ? "Recuento enviado a revisión." : "Avance del recuento guardado");
+}
+
 // ── Estado de lote (cuarentena / bloqueo / liberación) ──────────────
 
 const estadoLoteSchema = z.object({

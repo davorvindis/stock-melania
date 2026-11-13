@@ -67,6 +67,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
   const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
   const conteosARevisar = counts.filter((c) => c.status === "CLOSED");
+  const conteosARecontar = can(user, "conteos") ? counts.filter((c) => c.status === "RECOUNT") : [];
 
   const fisico = balances.reduce((s, b) => s + Number(b.quantity), 0);
   const disponible = balances.filter(isAvailable).reduce((s, b) => s + Number(b.quantity), 0);
@@ -232,6 +233,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <Link href="/vacaciones" className="font-medium text-rose-deep hover:underline">
               Revisar →
             </Link>
+          </p>
+        </Card>
+      )}
+
+      {conteosARecontar.length > 0 && (
+        <Card className="mt-4 border-amber-200">
+          <h2 className="mb-1 font-semibold text-amber-800">Hay productos para recontar</h2>
+          <p className="text-sm">
+            {conteosARecontar.map((c) => (
+              <Link key={c.id} href={`/conteos/${c.id}`} className="mr-3 font-medium text-rose-deep hover:underline">
+                Conteo {c.location.name} del {new Date(c.opened_at).toLocaleDateString("es-AR")} →
+              </Link>
+            ))}
           </p>
         </Card>
       )}

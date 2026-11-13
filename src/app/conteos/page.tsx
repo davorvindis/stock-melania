@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const ESTADOS: Record<string, { label: string; cls: string }> = {
   OPEN: { label: "Abierto", cls: "bg-blue-100 text-blue-800" },
   CLOSED: { label: "Cerrado — a revisar", cls: "bg-amber-100 text-amber-800" },
+  RECOUNT: { label: "Recontar pendientes", cls: "bg-amber-100 text-amber-800" },
   APPROVED: { label: "Aprobado", cls: "bg-emerald-100 text-emerald-800" },
   REJECTED: { label: "Rechazado", cls: "bg-stone-200 text-stone-700" },
   CANCELLED: { label: "Cerrado sin contar", cls: "bg-stone-200 text-stone-700" },

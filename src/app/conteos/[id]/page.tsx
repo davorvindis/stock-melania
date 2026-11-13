@@ -1,7 +1,7 @@
 import { SubmitButton } from "@/components/submit-button";
 import { requireSection } from "@/lib/auth";
 import { getCountDetail } from "@/lib/queries";
-import { guardarConteo, revisarConteo } from "@/lib/actions";
+import { guardarConteo, guardarRecuento, revisarConteo, revisarConteoPorLinea } from "@/lib/actions";
 import { fmtDate, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, button, th, td } from "@/components/ui";
 import { BuscadorConteo } from "@/components/buscador-conteo";
@@ -34,6 +34,12 @@ export default async function ConteoDetalle({
   const sinContar = lines.filter((l) => l.counted === null);
   const diffs = contadas.map((l) => ({ ...l, diff: Number(l.counted) - Number(l.expected) }));
   const conDiferencia = diffs.filter((l) => l.diff !== 0);
+  // por decidir: contadas con diferencia que todavía no se aprobaron ni se mandaron a revisar
+  const porDecidir = conDiferencia.filter((l) => !l.review_status);
+  const aRevisar = lines.filter((l) => l.review_status === "A_REVISAR");
+  const esAdmin = user.role === "ADMIN";
+  // mientras se recuenta, el equipo no ve el teórico (conteo a ciegas)
+  const ocultarTeorico = count.status === "RECOUNT" && !esAdmin;
   const tiposPresentes = [...new Set(lines.map((l) => l.product.type))];
 
   return (
@@ -144,7 +150,50 @@ export default async function ConteoDetalle({
         </Card>
       )}
 
-      {count.status !== "OPEN" && count.status !== "CANCELLED" && (
+      {count.status === "RECOUNT" && (
+        <Card className="mb-4 border-amber-300">
+          <h2 className="mb-1 font-semibold">Recontar pendientes ({aRevisar.length})</h2>
+          <p className="mb-4 text-sm text-soft">
+            Estos productos quedaron a revisar. Contalos de nuevo (el sistema no muestra cuánto debería haber) y
+            enviá el recuento. Lo demás del conteo ya está aprobado.
+          </p>
+          <form action={guardarRecuento} className="space-y-3">
+            <input type="hidden" name="conteo" value={count.id} />
+            {aRevisar.map((l) => {
+              const yaRecontado = !!l.recounted_at && !!l.reviewed_at && l.recounted_at > l.reviewed_at;
+              return (
+                <div key={l.id} className="flex items-center justify-between gap-3 rounded-lg border border-blush-100 p-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{l.product.name}</div>
+                    <div className="text-xs text-soft">
+                      {l.lot ? `Lote ${l.lot.code} · ` : ""}contar en {l.product.unit}
+                      {yaRecontado ? " · ya recontado" : ""}
+                    </div>
+                    {l.review_note && <div className="mt-0.5 text-xs text-amber-800">Nota: {l.review_note}</div>}
+                  </div>
+                  <input
+                    type="number"
+                    name={`recuento_${l.id}`}
+                    min="0"
+                    step="any"
+                    defaultValue={yaRecontado ? (l.counted ?? "") : ""}
+                    placeholder="Cant."
+                    className="w-24 rounded-lg border border-line px-3 py-2.5 text-center text-lg font-semibold focus:border-blush focus:outline-none focus:ring-2 focus:ring-blush-100"
+                  />
+                </div>
+              );
+            })}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <SubmitButton className={`${button} bg-ink hover:bg-stone-700`}>Guardar avance</SubmitButton>
+              <SubmitButton name="cerrar" value="1" className={button}>
+                Enviar recuento a revisión
+              </SubmitButton>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {count.status !== "OPEN" && count.status !== "CANCELLED" && !ocultarTeorico && (
         <>
           {count.notes && (
             <p className="mb-3 text-sm text-soft">
@@ -163,7 +212,11 @@ export default async function ConteoDetalle({
                   <div className="text-sm font-medium">
                     {l.product.name}
                     {l.lot ? <span className="font-normal text-soft"> · lote {l.lot.code}</span> : null}
+                    <EstadoLinea l={l} />
                   </div>
+                  {l.first_counted !== null && (
+                    <div className="text-xs text-soft">1er conteo: {fmtQty(l.first_counted)} (teórico {fmtQty(l.first_expected ?? 0)})</div>
+                  )}
                   <div className="mt-1 flex items-baseline justify-between text-sm">
                     <span className="text-soft">
                       Teórico {fmtQty(l.expected)} · físico {fmtQty(l.counted ?? 0)}
@@ -189,12 +242,18 @@ export default async function ConteoDetalle({
                     <th className={th}>Teórico</th>
                     <th className={th}>Físico</th>
                     <th className={th}>Diferencia</th>
+                    <th className={th}>Estado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {diffs.map((l) => (
                     <tr key={l.id} className="border-b border-blush-100">
-                      <td className={td}>{l.product.name}</td>
+                      <td className={td}>
+                        {l.product.name}
+                        {l.first_counted !== null && (
+                          <div className="text-xs text-soft">1er conteo: {fmtQty(l.first_counted)} (teórico {fmtQty(l.first_expected ?? 0)})</div>
+                        )}
+                      </td>
                       <td className={td}>{l.lot?.code ?? "—"}</td>
                       <td className={td}>{fmtQty(l.expected)}</td>
                       <td className={td}>{fmtQty(l.counted ?? 0)}</td>
@@ -206,6 +265,7 @@ export default async function ConteoDetalle({
                         {l.diff > 0 ? "+" : ""}
                         {fmtQty(l.diff)}
                       </td>
+                      <td className={td}><EstadoLinea l={l} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -236,12 +296,57 @@ export default async function ConteoDetalle({
           {count.status === "CLOSED" && user.role !== "ADMIN" && (
             <p className="mt-4 text-sm text-soft">Esperando revisión de un admin.</p>
           )}
-          {count.status === "CLOSED" && user.role === "ADMIN" && (
+          {count.status === "CLOSED" && esAdmin && porDecidir.length > 0 && (
             <Card className="mt-4 border-amber-200">
-              <h2 className="mb-1 font-semibold">Revisión</h2>
+              <h2 className="mb-1 font-semibold">Revisión producto por producto</h2>
               <p className="mb-3 text-sm text-soft">
-                Aprobar genera movimientos de ajuste trazables por cada diferencia. Rechazar no
-                toca el stock.
+                Para cada diferencia elegí <b>Aprobar</b> (la diferencia es real: se ajusta el stock ya) o{" "}
+                <b>A revisar</b> (vuelve al equipo para recontar solo ese producto). Lo que coincide se aprueba solo.
+              </p>
+              <form action={revisarConteoPorLinea} className="space-y-3">
+                <input type="hidden" name="conteo" value={count.id} />
+                {porDecidir.map((l) => (
+                  <div key={l.id} className="rounded-lg border border-blush-100 p-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {l.product.name}
+                        {l.lot ? <span className="font-normal text-soft"> · lote {l.lot.code}</span> : null}
+                      </span>
+                      <span className="text-sm">
+                        teórico {fmtQty(l.expected)} · físico {fmtQty(l.counted ?? 0)} ·{" "}
+                        <b className="text-red-700">{l.diff > 0 ? "+" : ""}{fmtQty(l.diff)}</b>
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                      <label className="flex items-center gap-1.5">
+                        <input type="radio" name={`decision_${l.id}`} value="aprobar" required className="accent-rose-deep" /> Aprobar
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        <input type="radio" name={`decision_${l.id}`} value="revisar" className="accent-amber-600" /> A revisar
+                      </label>
+                      <input
+                        name={`nota_${l.id}`}
+                        placeholder="Nota para el recuento (opcional), ej. contar por unidad, no por paquete"
+                        className="min-w-[12rem] flex-1 rounded-lg border border-line px-3 py-1.5 text-sm"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <label className={label}>Motivo de la decisión *</label>
+                  <input type="text" name="motivo" required className={input} placeholder="ej. diferencias verificadas con Yura" />
+                </div>
+                <SubmitButton className={button}>Confirmar revisión</SubmitButton>
+              </form>
+            </Card>
+          )}
+
+          {count.status === "CLOSED" && esAdmin && (
+            <Card className="mt-4 border-amber-200">
+              <h2 className="mb-1 font-semibold">{porDecidir.length > 0 ? "O decidir todo junto" : "Revisión"}</h2>
+              <p className="mb-3 text-sm text-soft">
+                Aprobar todo genera los ajustes de todas las diferencias pendientes. Rechazar no toca el stock
+                {lines.some((l) => l.review_status === "APROBADO") ? " de lo pendiente (lo ya aprobado queda aprobado)" : ""}.
               </p>
               <form action={revisarConteo} className="grid gap-3 sm:grid-cols-2">
                 <input type="hidden" name="conteo" value={count.id} />
@@ -257,7 +362,7 @@ export default async function ConteoDetalle({
                 </div>
                 <div className="flex gap-2 sm:col-span-2">
                   <SubmitButton name="decision" value="aprobar" className={button}>
-                    Aprobar y ajustar stock
+                    Aprobar todo y ajustar stock
                   </SubmitButton>
                   <SubmitButton
                   name="decision"
@@ -273,7 +378,7 @@ export default async function ConteoDetalle({
 
           {count.review_reason && (
             <p className="mt-3 text-sm text-soft">
-              Decisión: {count.status === "APPROVED" ? "aprobado" : "rechazado"} —{" "}
+              Decisión: {count.status === "APPROVED" ? "aprobado" : count.status === "RECOUNT" ? "aprobado en parte, con productos a recontar" : count.status === "REJECTED" ? "rechazado" : "en revisión"} —{" "}
               {count.review_reason}
             </p>
           )}
@@ -281,4 +386,11 @@ export default async function ConteoDetalle({
       )}
     </div>
   );
+}
+
+function EstadoLinea({ l }: { l: { review_status: string | null; counted: number | null } }) {
+  if (l.counted === null) return null;
+  if (l.review_status === "APROBADO") return <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Aprobado</span>;
+  if (l.review_status === "A_REVISAR") return <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">A revisar</span>;
+  return null;
 }

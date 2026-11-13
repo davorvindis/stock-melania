@@ -329,7 +329,7 @@ export async function getLotDetail(id: string) {
 
 export type CountRow = {
   id: string;
-  status: "OPEN" | "CLOSED" | "APPROVED" | "REJECTED" | "CANCELLED";
+  status: "OPEN" | "CLOSED" | "RECOUNT" | "APPROVED" | "REJECTED" | "CANCELLED";
   opened_by: string;
   opened_at: string;
   closed_by: string | null;
@@ -346,6 +346,13 @@ export type CountLine = {
   id: string;
   expected: number;
   counted: number | null;
+  review_status: "APROBADO" | "A_REVISAR" | null;
+  review_note: string | null;
+  recount_round: number;
+  first_expected: number | null;
+  first_counted: number | null;
+  recounted_at: string | null;
+  reviewed_at: string | null;
   product: { id: string; sku: string; name: string; unit: string; type: string };
   lot: { code: string } | null;
 };
@@ -369,7 +376,7 @@ export async function getCountDetail(id: string) {
       .single(),
     cli
       .from("inventory_count_lines")
-      .select("id, expected, counted, product:products(id, sku, name, unit, type), lot:lots(code)")
+      .select("id, expected, counted, review_status, review_note, recount_round, first_expected, first_counted, recounted_at, reviewed_at, product:products(id, sku, name, unit, type), lot:lots(code)")
       .eq("count_id", id)
       .order("id"),
   ]);

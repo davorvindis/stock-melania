@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "12 de noviembre de 2026";
+export const ACTUALIZADO = "13 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -175,9 +175,11 @@ export const MANUAL: Capitulo[] = [
         "**Abrir conteo:** elegí la ubicación y qué tipos de producto vas a contar (ej. solo Terminado y Monodosis). Si no marcás ninguno, entran todos.",
         "**Es ciego:** no ves cuánto \"debería\" haber. Usá el buscador y los botones de tipo para encontrar rápido cada producto.",
         "**Guardar avance** cuando quieras. **Cerrar conteo** aunque no hayas contado todo: lo que quede vacío queda \"sin contar\" y su stock no se toca.",
-        "Un administrador revisa teórico vs. físico y aprueba (el stock se corrige con ajustes) o rechaza.",
+        "Un administrador revisa teórico vs. físico **producto por producto**: cada diferencia se **aprueba** (el stock se corrige ya con un ajuste) o se manda **a revisar**. Lo que coincide se aprueba solo.",
+        "Si quedan productos a revisar, el conteo pasa a **Recontar pendientes** (aparece en el Dashboard): abrilo, contá de nuevo solo esos productos (sigue siendo a ciegas; si hay una nota, leela, por ejemplo \"contar por unidad\") y tocá **Enviar recuento a revisión**. Al recontar se compara con el stock de ese momento, así las ventas del medio no generan diferencias falsas.",
+        "Cuando no queda ningún producto a revisar, el conteo queda **Aprobado**.",
       ]),
-      A("Antes de tocar **Cerrar conteo**, revisá que los números sean los que anotaste. El conteo no cambia el stock hasta que un administrador lo aprueba: si algo quedó mal cargado, avisá y se rechaza.", "Para tener en cuenta"),
+      A("Contá siempre en la unidad del producto (la dice debajo del nombre): si dice *unidad* y hay paquetes de 100, se cargan las unidades (9 paquetes = 900). Los productos fallados o rotos no se cuentan: se dan de baja con un movimiento de **Rotura**.", "Para tener en cuenta"),
     ],
   },
   {
