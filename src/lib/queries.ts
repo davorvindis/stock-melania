@@ -550,3 +550,46 @@ export async function getKitComponents(kitId: string) {
     component: { id: string; sku: string; name: string; unit: string };
   }[];
 }
+
+// Resumen para las tarjetas del Dashboard.
+// disponibleVenta: mismo criterio que lo que se publica en la web = Depósito + Store,
+// sin cuarentena, lotes bloqueados/vencidos ni cajas cerradas, menos lo reservado por pedidos
+// (por producto, cortado en 0). enLaboratorios: stock de Melania en ubicaciones de proveedores.
+export async function getResumenStock(): Promise<{
+  disponibleVenta: number;
+  reservado: number;
+  enLaboratorios: number;
+  ubicacionesVenta: string[];
+}> {
+  const cli = db();
+  const [cfg, locs] = await Promise.all([
+    cli.from("app_settings").select("value").eq("key", "wix").maybeSingle(),
+    cli.from("locations").select("id, supplier_id"),
+  ]);
+  if (cfg.error) throw new Error(cfg.error.message);
+  if (locs.error) throw new Error(locs.error.message);
+  const w = (cfg.data?.value ?? {}) as { location_deposito?: string; location_store?: string };
+  const venta = [w.location_deposito, w.location_store].filter(Boolean) as string[];
+  const labs = (locs.data ?? []).filter((l) => l.supplier_id).map((l) => l.id);
+
+  const [disp, enLabs] = await Promise.all([
+    venta.length
+      ? cli.from("v_stock_disponible").select("product_id, available, reserved").in("location_id", venta)
+      : Promise.resolve({ data: [], error: null }),
+    labs.length
+      ? cli.from("stock_balances").select("quantity").in("location_id", labs).gt("quantity", 0)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (disp.error) throw new Error(disp.error.message);
+  if (enLabs.error) throw new Error(enLabs.error.message);
+
+  const porProducto = new Map<string, number>();
+  let reservado = 0;
+  for (const r of (disp.data ?? []) as { product_id: string; available: number; reserved: number }[]) {
+    porProducto.set(r.product_id, (porProducto.get(r.product_id) ?? 0) + Number(r.available));
+    reservado += Number(r.reserved);
+  }
+  const disponibleVenta = [...porProducto.values()].reduce((s, v) => s + Math.max(0, v), 0);
+  const enLaboratorios = ((enLabs.data ?? []) as { quantity: number }[]).reduce((s, b) => s + Number(b.quantity), 0);
+  return { disponibleVenta, reservado, enLaboratorios, ubicacionesVenta: venta };
+}

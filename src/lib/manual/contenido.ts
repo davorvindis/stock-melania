@@ -56,8 +56,8 @@ export const MANUAL: Capitulo[] = [
     bloques: [
       P("**Para qué sirve:** ver de un vistazo cómo está todo hoy."),
       L([
-        "Arriba: unidades físicas, disponibles para venta, en cuarentena y productos bajo stock mínimo.",
-        "**Disponible por producto:** con botones para ver solo un tipo (Terminado, Monodosis, Kits, Packaging, Accesorios…) y su total.",
+        "Arriba: **unidades físicas** (todo lo de Melania, esté donde esté), **disponibles para venta** (Depósito + Store, sin lo reservado para pedidos ni lo bloqueado: es lo mismo que muestra la web), **en laboratorios** (mercadería de Melania que está en los proveedores), en cuarentena y productos bajo stock mínimo.",
+        "**Disponible por producto:** con botones para ver solo un tipo (Terminado, Monodosis, Kits, Packaging, Accesorios…) y su total. Igual que **bajo mínimo**, cuenta solo lo del Depósito y el Store: lo que está en un laboratorio no se cuenta hasta que vuelve.",
         "Ventas de los últimos 14 días (minorista y mayorista) y lo vendido en el mes. Si no tenés la pestaña Ventas, ves tus ventas.",
         "**Avisos:** pedidos de Wix demorados o a revisar, preventas con stock para entregar, conteos para revisar, lotes por vencer y productos bajo mínimo (ver *Avisos del Dashboard*).",
       ]),

@@ -27,7 +27,7 @@ export function Card({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
-export function Stat({ label, value, alert = false }: { label: string; value: string | number; alert?: boolean }) {
+export function Stat({ label, value, alert = false, hint }: { label: string; value: string | number; alert?: boolean; hint?: string }) {
   return (
     <Card>
       <div className="text-sm text-soft">{label}</div>
@@ -36,6 +36,7 @@ export function Stat({ label, value, alert = false }: { label: string; value: st
       >
         {value}
       </div>
+      {hint && <div className="mt-1 text-xs text-soft">{hint}</div>}
     </Card>
   );
 }

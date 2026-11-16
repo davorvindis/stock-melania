@@ -12,7 +12,7 @@ import { getPedidosListos } from "@/lib/pedidos-listos";
 import { getFeriados } from "@/lib/feriados";
 import { demorado } from "@/components/pedido-badge";
 import { TarjetaPedidosListos } from "@/components/pedidos-listos";
-import { getBalances, getMovements, getCounts, getSeparables, isAvailable, enCajaCerrada } from "@/lib/queries";
+import { getBalances, getMovements, getCounts, getSeparables, getResumenStock, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
 import { MovementCard, OrigenDestino } from "@/components/movement-card";
@@ -49,7 +49,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const vePedidos = can(user, "pedidos");
   // salud de la conexión con Wix: Joel, Mel y Yura (admin / encargada)
   const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "VIEWER";
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -63,6 +63,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     vePedidos ? getPedidosListos() : Promise.resolve(null),
     vePedidos ? getFeriados() : Promise.resolve(new Set<string>()),
     veSaludWix ? getSaludWix().catch(() => null) : Promise.resolve(null),
+    getResumenStock(),
   ]);
   // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
   const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
@@ -70,12 +71,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const conteosARecontar = can(user, "conteos") ? counts.filter((c) => c.status === "RECOUNT") : [];
 
   const fisico = balances.reduce((s, b) => s + Number(b.quantity), 0);
-  const disponible = balances.filter(isAvailable).reduce((s, b) => s + Number(b.quantity), 0);
   const enCuarentena = balances
     .filter((b) => b.location.is_quarantine || (b.lot && b.lot.status !== "ACTIVE"))
     .reduce((s, b) => s + Number(b.quantity), 0);
 
-  // bajo mínimo: suma disponible por producto vs stock mínimo
+  // bajo mínimo: suma disponible por producto vs stock mínimo, solo Depósito + Store
+  // (lo que está en laboratorios no se puede vender todavía)
+  const ventaLocs = new Set(resumen.ubicacionesVenta);
   const porProducto = new Map<string, { sku: string; name: string; type: string; min: number; qty: number }>();
   for (const b of balances) {
     const cur = porProducto.get(b.product.id) ?? {
@@ -86,7 +88,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       qty: 0,
     };
     // la caja cerrada también cuenta: el producto está, solo falta abrirla
-    if (isAvailable(b) || enCajaCerrada(b)) cur.qty += Number(b.quantity);
+    if (ventaLocs.has(b.location.id) && (isAvailable(b) || enCajaCerrada(b))) cur.qty += Number(b.quantity);
     porProducto.set(b.product.id, cur);
   }
   const bajoMinimo = [...porProducto.values()].filter((p) => p.min > 0 && p.qty < p.min);
@@ -169,9 +171,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </Card>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Unidades físicas" value={fmtQty(fisico)} />
-        <Stat label="Disponibles para venta" value={fmtQty(disponible)} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Stat label="Unidades físicas" value={fmtQty(fisico)} hint="Todo lo de Melania, esté donde esté" />
+        <Stat
+          label="Disponibles para venta"
+          value={fmtQty(resumen.disponibleVenta)}
+          hint={`Depósito + Store${resumen.reservado > 0 ? `, sin ${fmtQty(resumen.reservado)} reservadas para pedidos` : ""}`}
+        />
+        <Stat label="En laboratorios" value={fmtQty(resumen.enLaboratorios)} hint="De Melania, en proveedores" />
         <Stat label="En cuarentena / bloqueado" value={fmtQty(enCuarentena)} alert={enCuarentena > 0} />
         <Stat label="Productos bajo mínimo" value={bajoMinimo.length} alert={bajoMinimo.length > 0} />
       </div>
