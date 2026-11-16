@@ -48,7 +48,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const veCierres = user.role === "ADMIN" && can(user, "caja");
   const vePedidos = can(user, "pedidos");
   // salud de la conexión con Wix: Joel, Mel y Yura (admin / encargada)
-  const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER";
+  const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "VIEWER";
   const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix] = await Promise.all([
     getBalances(),
     getMovements(8),

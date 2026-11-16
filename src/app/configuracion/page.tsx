@@ -15,6 +15,7 @@ const ROLES = [
   ["ADMIN", "Admin — todo, incl. usuarios y aprobaciones"],
   ["MANAGER", "Manager — opera y aprueba, sin configuración"],
   ["OPERATOR", "Operadora — opera, sin auditoría ni configuración"],
+  ["VIEWER", "Observador — solo lectura: ve y descarga, no modifica nada"],
 ] as const;
 
 export default async function Configuracion({

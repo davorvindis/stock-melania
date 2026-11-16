@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "13 de noviembre de 2026";
+export const ACTUALIZADO = "16 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -45,6 +45,7 @@ export const MANUAL: Capitulo[] = [
         ["**Juan y Francisco**", "Depósito", "Cargan ingresos y movimientos. Arman los pedidos web en **Pedidos Wix**, los marcan como **procesados** y después como **despachados** o **retirados**."],
         ["**Yura** (encargada)", "Depósito", "Además corrige (revertir, ajustar, asignar lotes, separar blisters), carga los pedidos mayoristas en Wix, resuelve avisos y **Ventas sin descontar**, hace reembolsos y el **Cierre de caja**."],
         ["**Joel y Mel**", "Administración", "Todo lo anterior, más aprobar conteos, vacaciones y movimientos de la caja fuerte, usuarios y permisos, y cargar productos o combos nuevos en **Equivalencias Wix**."],
+        ["**Darko** (asesor externo)", "Remoto", "Usuario **Observador**, de solo lectura: ve stock, ventas, costos, compras, precios, forecast, pedidos y conteos, y descarga los reportes para analizar. No carga ni cambia nada. Si necesita un dato o un cambio, lo pide a través de Yura."],
       ]),
       P("**Ubicaciones:** Depósito, Store, Cuarentena y laboratorios/proveedores donde hay mercadería de Melania (Oxapharma, Baricosmos, One Pack). Lo que se manda a un laboratorio sigue siendo de Melania: solo cambia de lugar."),
     ],
@@ -484,6 +485,7 @@ export const MANUAL: Capitulo[] = [
         solo("**Costos** e **Historial de precios**.", { s: ["costos", "precios"] }),
         solo("**Precios y Wix:** los precios se cambian en **Wix**. Todos los días a la mañana la app lee los precios publicados y, si alguno cambió, lo anota en el **Historial de cambios** como \"Wix (automático)\", con cuánto subió y el nuevo precio mayorista. Para que se vea al momento, tocá **Traer precios de Wix ahora**. En cada cambio, **editar nota** sirve para anotar quién lo hizo o corregir la fecha si se cambió el día anterior.", { s: ["precios"] }),
         solo("**Configuración:** usuarios, PIN, permisos (qué pestañas ve cada uno), y ubicación fija. Lo que habilites acá aparece solo en el manual de esa persona.", { s: ["configuracion"] }),
+        solo("**Rol Observador:** usuario de solo lectura (por ejemplo, para un asesor). Ve las pestañas que le tildes y descarga los reportes, pero el sistema le rechaza cualquier carga, aprobación o cambio. Por defecto no ve Empleados y sueldos, Faltas, Vacaciones ni Cierre de caja: si hace falta, se le tilda la pestaña.", { s: ["configuracion"] }),
       ]),
     ],
   },

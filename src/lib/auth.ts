@@ -1,12 +1,12 @@
 import "server-only";
 import { cache } from "react";
 import { randomInt } from "crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { db } from "./db";
 
-export type Role = "ADMIN" | "MANAGER" | "OPERATOR";
+export type Role = "ADMIN" | "MANAGER" | "OPERATOR" | "VIEWER";
 
 export type Profile = {
   id: string;
@@ -68,7 +68,26 @@ const ROLE_DEFAULTS: Record<Role, Record<string, boolean>> = {
     productos: true, proveedores: true, ubicaciones: false, auditoria: false, configuracion: false,
     ventas: false, compras: false, costos: false, faltas: false, vacaciones: false, empleados: false, precios: false, preventa: false, wix: false, pedidos: true, caja: false, forecast: false,
   },
+  // Observador (asesor externo): ve casi todo, sin datos del personal ni de la caja; no modifica nada
+  VIEWER: {
+    stock: true, lotes: true, ingresos: true, movimientos: true, conteos: true,
+    productos: true, proveedores: true, ubicaciones: true, auditoria: true, configuracion: false,
+    ventas: true, compras: true, costos: true, faltas: false, vacaciones: false, empleados: false, precios: true, preventa: true, wix: true, pedidos: true, caja: false, forecast: true,
+  },
 };
+
+export function soloLectura(p: Pick<Profile, "role">): boolean {
+  return p.role === "VIEWER";
+}
+
+// ¿el request actual es una acción que cambia datos? (server action: header next-action,
+// o envío de formulario sin JS). Las páginas y descargas (GET) no lo son.
+async function esAccion(): Promise<boolean> {
+  const h = await headers();
+  if (h.get("next-action")) return true;
+  const ct = h.get("content-type") ?? "";
+  return ct.startsWith("multipart/form-data") || ct.startsWith("application/x-www-form-urlencoded");
+}
 
 export function can(p: Profile, section: string): boolean {
   if (section === "dashboard") return true;
@@ -119,6 +138,11 @@ export async function requireUser(): Promise<Profile> {
   const p = await getSessionUser();
   if (!p) redirect("/login");
   if (p.must_change_pin) redirect("/cambiar-pin");
+  // Observador: solo lectura. Todas las acciones pasan por acá (requireSection / requireRole),
+  // así que se corta antes de tocar cualquier dato.
+  if (soloLectura(p) && (await esAccion())) {
+    redirect(`/?error=${encodeURIComponent("Tu usuario es de solo lectura: podés ver y descargar, pero no modificar.")}`);
+  }
   return p;
 }
 

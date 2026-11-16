@@ -73,7 +73,7 @@ const usuarioSchema = z.object({
   email: z.string().trim().email("Email inválido"),
   alias: z.string().trim().min(2, "El alias necesita al menos 2 caracteres"),
   dni: z.string().trim().optional(),
-  rol: z.enum(["ADMIN", "MANAGER", "OPERATOR"]),
+  rol: z.enum(["ADMIN", "MANAGER", "OPERATOR", "VIEWER"]),
 });
 
 // ubicación de trabajo: solo la asigna un ADMIN
@@ -167,7 +167,7 @@ export async function actualizarUsuario(formData: FormData) {
   const id = String(formData.get("usuario") ?? "");
   const rol = String(formData.get("rol") ?? "");
   const activo = formData.get("activo") === "on";
-  if (!["ADMIN", "MANAGER", "OPERATOR"].includes(rol)) {
+  if (!["ADMIN", "MANAGER", "OPERATOR", "VIEWER"].includes(rol)) {
     redirect(`${back}?error=${encodeURIComponent("Rol inválido")}`);
   }
   if (id === admin.id && (rol !== "ADMIN" || !activo)) {

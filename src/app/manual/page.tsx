@@ -25,11 +25,14 @@ const TONOS = {
   verde: "border-emerald-200 bg-emerald-50",
 };
 
-const ROL: Record<string, string> = { ADMIN: "Administración", MANAGER: "Encargada", OPERATOR: "Equipo" };
+const ROL: Record<string, string> = { ADMIN: "Administración", MANAGER: "Encargada", OPERATOR: "Equipo", VIEWER: "Observador (solo lectura)" };
 
 function Permisos({ u }: { u: Profile }) {
   const encargada = u.role === "ADMIN" || u.role === "MANAGER";
-  const puede = [
+  const puede = u.role === "VIEWER" ? [
+    "Ver todas tus pestañas y descargar los Excel y reportes (stock, ventas, movimientos, forecast).",
+    "Es un usuario de solo lectura: no podés cargar, aprobar ni cambiar nada. Si tocás un botón que modifica datos, el sistema te avisa y no hace nada.",
+  ] : [
     can(u, "stock") && "Ver el stock de tus ubicaciones y descargar el Excel.",
     can(u, "ingresos") && "Cargar ingresos de mercadería.",
     can(u, "movimientos") && "Cargar movimientos (transferencias, roturas, muestras…) y ver el historial.",

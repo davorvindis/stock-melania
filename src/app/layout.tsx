@@ -71,6 +71,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <Nav sections={allowedSections(user)} />
               </div>
             </header>
+            {user.role === "VIEWER" && (
+              <div className="border-b border-line bg-blush-100 px-4 py-1.5 text-center text-xs text-soft">
+                Usuario de solo lectura: podés ver y descargar todo lo de tus pestañas, pero no modificar.
+              </div>
+            )}
             {listos && <BannerPedidosListos r={listos} />}
             <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
           </>
