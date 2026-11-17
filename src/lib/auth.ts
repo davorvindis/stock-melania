@@ -19,6 +19,7 @@ export type Profile = {
   must_change_pin: boolean;
   location_id?: string | null;
   location_locked?: boolean;
+  birthday?: string | null; // YYYY-MM-DD
 };
 
 // ubicación a la que está atado el usuario (solo opera stock desde ahí), o null

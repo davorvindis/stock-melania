@@ -9,6 +9,7 @@ import { getPedidosListos } from "@/lib/pedidos-listos";
 import { BannerPedidosListos } from "@/components/pedidos-listos";
 import { logout } from "@/lib/auth-actions";
 import { db } from "@/lib/db";
+import { cumpleanerosHoy } from "@/lib/cumples";
 import "./globals.css";
 
 const bebas = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-bebas" });
@@ -22,13 +23,17 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   const conMenu = user && !user.must_change_pin;
-  const [ubicacion, listos] = await Promise.all([
+  const [ubicacion, listos, cumples] = await Promise.all([
     user?.location_id
       ? db().from("locations").select("name").eq("id", user.location_id).maybeSingle().then((r) => r.data?.name ?? null)
       : null,
     // recordatorio de pedidos armados que no salieron: para quien trabaja con Pedidos Wix
     conMenu && can(user, "pedidos") ? getPedidosListos().catch(() => null) : null,
+    conMenu ? cumpleanerosHoy().catch(() => []) : [],
   ]);
+  const nombres = cumples.map((c) => c.alias);
+  const cumpleYo = !!user && cumples.some((c) => c.id === user.id);
+  const listaNombres = nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}` : nombres[0];
 
   return (
     <html lang="es" className={`${bebas.variable} ${montserrat.variable}`}>
@@ -74,6 +79,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {user.role === "VIEWER" && (
               <div className="border-b border-line bg-blush-100 px-4 py-1.5 text-center text-xs text-soft">
                 Usuario de solo lectura: podés ver y descargar todo lo de tus pestañas, pero no modificar.
+              </div>
+            )}
+            {nombres.length > 0 && (
+              <div className="border-b border-blush bg-blush-100 px-4 py-2.5 text-center">
+                <p className="font-display text-xl tracking-wide text-rose-deeper sm:text-2xl">
+                  🎂🎉 ¡Feliz cumple, {listaNombres}! 🥳🎈
+                </p>
+                <p className="text-xs text-soft">
+                  {cumpleYo ? "Que tengas un día hermoso. ¡Todo el equipo de Melania te saluda! 💖" : `Hoy es su cumple: no te olvides de saludar${nombres.length > 1 ? "los" : ""} 🎁`}
+                </p>
               </div>
             )}
             {listos && <BannerPedidosListos r={listos} />}

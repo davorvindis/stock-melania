@@ -174,18 +174,21 @@ export async function actualizarUsuario(formData: FormData) {
     redirect(`${back}?error=${encodeURIComponent("No podés desactivarte ni quitarte ADMIN a vos mismo")}`);
   }
   const ubic = await leerUbicacion(formData, back);
+  const cumple = String(formData.get("cumple") ?? "").trim();
+  if (cumple && !/^\d{4}-\d{2}-\d{2}$/.test(cumple)) redirect(`${back}?error=${encodeURIComponent("Fecha de cumpleaños inválida")}`);
+  const birthday = cumple || null;
   const permissions: Record<string, boolean> = {};
   for (const s of SECTIONS) {
     permissions[s.key] = formData.get(`perm_${s.key}`) === "on";
   }
   const { error } = await db()
     .from("profiles")
-    .update({ role: rol, active: activo, permissions, ...ubic })
+    .update({ role: rol, active: activo, permissions, birthday, ...ubic })
     .eq("id", id);
   if (error) redirect(`${back}?error=${encodeURIComponent(error.message)}`);
   await db().from("audit_logs").insert({
     actor: admin.alias, action: "user:update", entity: "profiles", entity_id: id,
-    detail: { role: rol, active: activo, permissions, ...ubic },
+    detail: { role: rol, active: activo, permissions, birthday, ...ubic },
   });
   revalidatePath("/configuracion");
   redirect(`${back}?ok=${encodeURIComponent("Usuario actualizado")}`);

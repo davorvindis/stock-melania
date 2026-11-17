@@ -232,6 +232,10 @@ export default async function Configuracion({
                   <input type="checkbox" name="activo" defaultChecked={u.active} className="h-4 w-4 accent-rose-deep" />
                   Activo
                 </label>
+                <label className="flex items-center gap-2 whitespace-nowrap text-sm">
+                  🎂 Cumpleaños
+                  <input type="date" name="cumple" defaultValue={u.birthday ?? ""} className={`${input} w-auto`} />
+                </label>
               </div>
               {camposUbicacion(u)}
               <fieldset>
