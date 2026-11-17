@@ -14,7 +14,7 @@ import {
 import { copiarMes } from "@/lib/compras-actions";
 import { conPrecioDeLista } from "@/lib/precios";
 import { fmtMoney } from "@/lib/types";
-import { Card, Flash, PageTitle, th, td } from "@/components/ui";
+import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { CostoForm } from "@/components/costo-form";
 
@@ -44,7 +44,7 @@ function Variacion({ v, invertir = false }: { v: number | null; invertir?: boole
 export default async function Costos({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; error?: string; mes?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; mes?: string; q?: string }>;
 }) {
   await requireSection("costos");
   const sp = await searchParams;
@@ -70,6 +70,17 @@ export default async function Costos({
   const listaProductos = productos.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name }));
   const listaProveedores = proveedores.map((p) => ({ id: p.id, name: p.name }));
 
+  // buscador: sin importar acentos ni mayúsculas, todas las palabras (busca en el ítem y el proveedor)
+  const sinAcentos = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const q = (sp.q ?? "").trim();
+  const palabras = sinAcentos(q).split(/\s+/).filter(Boolean);
+  const visibles = palabras.length
+    ? filas.filter((f) => {
+        const texto = sinAcentos(`${f.item} ${f.supplier?.name ?? ""}`);
+        return palabras.every((w) => texto.includes(w));
+      })
+    : filas;
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -90,7 +101,7 @@ export default async function Costos({
         {periodos.map((p) => (
           <Link
             key={p}
-            href={`/costos?mes=${p.slice(0, 7)}`}
+            href={`/costos?mes=${p.slice(0, 7)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-sm capitalize ${
               p === periodo ? "border-rose-deep bg-rose-deep font-semibold text-white" : "border-line bg-white text-soft hover:border-blush"
             }`}
@@ -132,6 +143,35 @@ export default async function Costos({
             descuento al precio minorista, y entre paréntesis cuánto recibís por unidad (rojo = pierde plata, ámbar = menos de 20%).
             {anterior && ` Las flechas comparan contra ${nombreMes(anterior)}.`} Tocá un ítem para ver su evolución.
           </p>
+          <form method="get" className="mb-3 flex flex-wrap gap-2">
+            <input type="hidden" name="mes" value={periodo.slice(0, 7)} />
+            <input
+              type="search"
+              name="q"
+              list="items-costos"
+              defaultValue={q}
+              placeholder="Buscar producto o proveedor (ej.: serum, one pack)…"
+              aria-label="Buscar producto"
+              autoComplete="off"
+              className={`${input} min-w-0 flex-1`}
+            />
+            <datalist id="items-costos">
+              {filas.map((f) => (
+                <option key={f.id} value={f.item} />
+              ))}
+            </datalist>
+            <button type="submit" className="rounded-lg bg-rose-deep px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-deeper">
+              Buscar
+            </button>
+          </form>
+          {q && (
+            <p className="mb-2 text-sm text-soft">
+              {visibles.length} de {filas.length} ítem(s) ·{" "}
+              <Link href={`/costos?mes=${periodo.slice(0, 7)}`} className="font-medium text-rose-deep hover:underline">
+                Ver todos
+              </Link>
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -150,7 +190,7 @@ export default async function Costos({
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => {
+                {visibles.map((f) => {
                   const costo = Number(f.total_cost);
                   const precio = f.sale_price != null ? Number(f.sale_price) : null;
                   const p = prev.get(f.item);
