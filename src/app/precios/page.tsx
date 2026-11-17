@@ -85,8 +85,12 @@ export default async function Precios({ searchParams }: { searchParams: Promise<
       const a = analizar(porItem.get(i.id) ?? [], hoy);
       return { ...i, ...a, subaCosto: i.product_id ? subaCostoDesde(costos.get(i.product_id), a.ultimaSuba) : null };
     });
+  // búsqueda sin importar mayúsculas ni acentos, por cada palabra ("serum hidra" encuentra "Serum Hidraluxe")
+  const sinAcentos = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const palabras = sp.q ? sinAcentos(sp.q).split(/\s+/).filter(Boolean) : [];
+  const coincide = (nombre: string | undefined) => !!nombre && palabras.every((w) => sinAcentos(nombre).includes(w));
   let lista = filas;
-  if (sp.q) lista = lista.filter((f) => f.name.toLowerCase().includes(sp.q!.toLowerCase()));
+  if (palabras.length) lista = lista.filter((f) => coincide(f.name));
   if (sp.cat) lista = lista.filter((f) => f.category === sp.cat);
   if (sp.may === "si") lista = lista.filter((f) => f.wholesale);
   if (sp.antig) lista = lista.filter((f) => (f.diasDesdeSuba ?? 0) >= Number(sp.antig) * 30);
@@ -102,7 +106,7 @@ export default async function Precios({ searchParams }: { searchParams: Promise<
   if (sp.canal) historial = historial.filter((c) => c.channel === sp.canal);
   if (sp.anio) historial = historial.filter((c) => c.effective_date.startsWith(sp.anio!));
   if (sp.mes) historial = historial.filter((c) => c.effective_date.startsWith(sp.mes!));
-  if (sp.q && vista === "historial") historial = historial.filter((c) => nombreItem.get(c.item_id)?.name.toLowerCase().includes(sp.q!.toLowerCase()));
+  if (palabras.length && vista === "historial") historial = historial.filter((c) => coincide(nombreItem.get(c.item_id)?.name));
   const anios = [...new Set(cambios.map((c) => c.effective_date.slice(0, 4)))].sort().reverse();
   const meses = [...new Set(cambios.map((c) => c.effective_date.slice(0, 7)))].sort().reverse();
   const anteriorDe = (c: (typeof cambios)[number]) => {
@@ -379,14 +383,21 @@ export default async function Precios({ searchParams }: { searchParams: Promise<
         <>
           <form method="get" className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <input type="hidden" name="vista" value="historial" />
-            <select name="item" defaultValue={sp.item ?? ""} aria-label="Producto" className={`${input} lg:col-span-2`}>
-              <option value="">Todos los productos</option>
+            <input
+              type="search"
+              name="q"
+              list="productos-historial"
+              defaultValue={sp.q ?? (sp.item ? nombreItem.get(sp.item)?.name : "") ?? ""}
+              placeholder="Buscar producto (ej.: serum, glue)…"
+              aria-label="Buscar producto"
+              autoComplete="off"
+              className={`${input} lg:col-span-2`}
+            />
+            <datalist id="productos-historial">
               {items.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
+                <option key={i.id} value={i.name} />
               ))}
-            </select>
+            </datalist>
             <select name="anio" defaultValue={sp.anio ?? ""} aria-label="Año" className={input}>
               <option value="">Todos los años</option>
               {anios.map((a) => (
