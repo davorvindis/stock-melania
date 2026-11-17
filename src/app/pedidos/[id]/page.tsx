@@ -14,6 +14,8 @@ import { marcarAvisoCliente } from "@/lib/pedidos-aviso-actions";
 import { esDemorado } from "@/lib/pedidos-listos";
 import { getFeriados } from "@/lib/feriados";
 import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
+import { getPedidosEnEspera } from "@/lib/pedidos-espera";
+import { ponerEnEspera, quitarEspera } from "@/lib/pedidos-espera-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +107,57 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
         </SubmitButton>
       </form>
     </details>
+  );
+  // en espera: no se despacha a propósito (ej. espera otro producto para mandar todo junto)
+  const puedeEsperar = p.channel_type !== "POS" && ["RESERVED", "PARTIAL", "PROCESSED"].includes(p.state) && !p.delivery_status;
+  const [espera, productosActivos] = puedeEsperar
+    ? await Promise.all([
+        p.hold_since ? getPedidosEnEspera().then((l) => l.find((x) => x.id === p.id) ?? null) : Promise.resolve(null),
+        db().from("products").select("id, name").eq("active", true).order("name").then((r) => (r.data ?? []) as { id: string; name: string }[]),
+      ])
+    : [null, [] as { id: string; name: string }[]];
+  const nombreProducto = new Map(productosActivos.map((x) => [x.id, x.name]));
+  const esperadosActuales = (p.hold_products ?? []).map((pid) => nombreProducto.get(pid) ?? "");
+  const formEspera = (editar: boolean) => (
+    <form action={ponerEnEspera} className="mt-2 space-y-2 text-sm">
+      <input type="hidden" name="id" value={p.id} />
+      <label className="block">
+        <span className="text-xs text-soft">¿Por qué espera?</span>
+        <input
+          name="motivo"
+          required
+          minLength={3}
+          maxLength={300}
+          defaultValue={editar ? (p.hold_reason ?? "") : ""}
+          placeholder="ej. Espera ingreso de Paso 1 y 2 para mandar todo junto"
+          className={`${input} w-full`}
+        />
+      </label>
+      <div>
+        <span className="text-xs text-soft">Producto que se espera (opcional): cuando entre al {p.location?.name ?? "Depósito"} te avisa</span>
+        <div className="mt-1 grid gap-2 sm:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <input
+              key={i}
+              type="search"
+              name="producto"
+              list="productos-espera"
+              defaultValue={editar ? (esperadosActuales[i] ?? "") : ""}
+              placeholder="Buscar producto…"
+              className={`${input} w-full`}
+            />
+          ))}
+        </div>
+        <datalist id="productos-espera">
+          {productosActivos.map((x) => (
+            <option key={x.id} value={x.name} />
+          ))}
+        </datalist>
+      </div>
+      <SubmitButton className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800">
+        {editar ? "Guardar cambios" : "⏸ Poner en espera"}
+      </SubmitButton>
+    </form>
   );
   const porItem = new Map<string, typeof fulfillments>();
   for (const f of fulfillments) porItem.set(f.item_id, [...(porItem.get(f.item_id) ?? []), f]);
@@ -297,6 +350,56 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           </form>
         </Card>
       </div>
+
+      {puedeEsperar && p.hold_since && (
+        <Card className="mt-3 border-violet-300 bg-violet-50">
+          <div id="espera" className="flex flex-wrap items-start justify-between gap-2">
+            <div className="text-sm">
+              <b className="text-violet-900">⏸ En espera:</b> {p.hold_reason}
+              <div className="text-xs text-violet-800">
+                Desde {fmtDateTime(p.hold_since)} · lo puso {p.hold_by}. No figura como demorado.
+              </div>
+            </div>
+            <form action={quitarEspera}>
+              <input type="hidden" name="id" value={p.id} />
+              <SubmitButton
+                confirmar="¿Quitar la espera? El pedido vuelve a la lista normal (y si pasó más de 1 día hábil, figura como demorado)."
+                className="rounded-lg border border-violet-400 bg-white px-4 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
+              >
+                Quitar espera
+              </SubmitButton>
+            </form>
+          </div>
+          {espera && espera.esperados.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm">
+              {espera.esperados.map((e) => (
+                <li key={e.id} className={`rounded-lg px-3 py-1.5 ${e.ingreso > 0 ? "bg-emerald-100 text-emerald-900" : "bg-white"}`}>
+                  {e.ingreso > 0 ? "✅ Ya ingresó" : "Todavía no ingresó"} <b>{e.name}</b>
+                  {e.ingreso > 0 && ` (${fmtQty(e.ingreso)} desde que se puso en espera)`}
+                  <span className="text-xs"> · disponible ahora en {espera.location?.name ?? "el Depósito"}: {fmtQty(e.disponible)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {espera?.yaIngreso && (
+            <p className="mt-2 text-xs font-medium text-emerald-900">
+              Si ya está todo, agregá lo que falta al paquete (pedido nuevo en Wix si lo compró aparte), quitá la espera y despachalo.
+            </p>
+          )}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-violet-900 underline">Editar motivo o productos</summary>
+            {formEspera(true)}
+          </details>
+        </Card>
+      )}
+      {puedeEsperar && !p.hold_since && (
+        <details id="espera" className="mt-3 rounded-xl border border-violet-200 bg-white p-3">
+          <summary className="cursor-pointer text-sm font-medium text-violet-900">
+            ⏸ Poner en espera <span className="font-normal text-soft">(no se despacha todavía a propósito, ej. espera otro producto)</span>
+          </summary>
+          {formEspera(false)}
+        </details>
+      )}
 
       {puedeEntregar && (
         <Card className="mt-3 border-emerald-200 bg-emerald-50">

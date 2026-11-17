@@ -17,13 +17,14 @@ export function esDemorado(processedAt: string | null, feriados: Set<string>, ho
 export type ResumenListos = {
   retiro: { total: number; sinAvisar: number; sinAvisarDemorados: number; demorados: number };
   envio: { total: number; moto: number; correo: number; otro: number; demorados: number };
+  enEspera: number; // armados que esperan otra cosa (no cuentan como demorados)
 };
 
 export async function getPedidosListos(): Promise<ResumenListos> {
   const [{ data, error }, feriados] = await Promise.all([
     db()
       .from("channel_orders")
-      .select("processed_at, delivery_rank, customer_notified_at")
+      .select("processed_at, delivery_rank, customer_notified_at, hold_since")
       .eq("state", "PROCESSED")
       .is("delivery_status", null)
       .neq("channel_type", "POS"),
@@ -34,9 +35,11 @@ export async function getPedidosListos(): Promise<ResumenListos> {
   const r: ResumenListos = {
     retiro: { total: 0, sinAvisar: 0, sinAvisarDemorados: 0, demorados: 0 },
     envio: { total: 0, moto: 0, correo: 0, otro: 0, demorados: 0 },
+    enEspera: 0,
   };
   for (const p of data ?? []) {
-    const dem = esDemorado(p.processed_at as string | null, feriados, hoy);
+    if (p.hold_since) r.enEspera++;
+    const dem = !p.hold_since && esDemorado(p.processed_at as string | null, feriados, hoy);
     if (p.delivery_rank === 3) {
       r.retiro.total++;
       if (dem) r.retiro.demorados++;

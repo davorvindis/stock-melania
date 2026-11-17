@@ -20,8 +20,9 @@ export function badgeEstado(p: PedidoWix) {
 
 // pagado hace más de 3 días y todavía sin procesar
 // pagado hace más de 3 días hábiles (lunes a viernes, sin feriados) y todavía sin procesar
+// los pedidos "en espera" no cuentan como demorados (se ven aparte en el Dashboard)
 export function demorado(p: PedidoWix, feriados: Set<string>): boolean {
-  return (p.state === "RESERVED" || p.state === "PARTIAL") && !!p.paid_at && diasHabilesDesde(p.paid_at, feriados) > 3;
+  return !p.hold_since && (p.state === "RESERVED" || p.state === "PARTIAL") && !!p.paid_at && diasHabilesDesde(p.paid_at, feriados) > 3;
 }
 
 // método de entrega de Wix → grupo para armar (la moto pasa ~13 h, el correo hasta 18 h)
@@ -35,6 +36,15 @@ export function metodoEntrega(p: PedidoWix): Entrega {
   if (t.includes("correo")) return { clave: "CORREO", label: "📦 Correo Argentino", orden: 2, color: "bg-sky-100 text-sky-800" };
   if (t.includes("retiro") || t.includes("sucursal")) return { clave: "RETIRO", label: "🏬 Retiro en sucursal", orden: 3, color: "bg-emerald-100 text-emerald-800" };
   return { clave: "OTRO", label: p.envio_titulo!.trim(), orden: 4, color: "bg-blush-100 text-ink" };
+}
+
+export function badgeEspera(p: PedidoWix) {
+  if (!p.hold_since || p.delivery_status) return null;
+  return (
+    <div className="text-xs font-medium text-violet-800" title={p.hold_reason ?? ""}>
+      ⏸ En espera{p.hold_reason ? `: ${p.hold_reason}` : ""}
+    </div>
+  );
 }
 
 export function badgeEntrega(p: PedidoWix) {

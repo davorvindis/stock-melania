@@ -11,7 +11,8 @@ import { FranjaSaludWix } from "@/components/salud-wix";
 import { getPedidosListos } from "@/lib/pedidos-listos";
 import { getFeriados } from "@/lib/feriados";
 import { demorado } from "@/components/pedido-badge";
-import { TarjetaPedidosListos } from "@/components/pedidos-listos";
+import { TarjetaPedidosEnEspera, TarjetaPedidosListos } from "@/components/pedidos-listos";
+import { getPedidosEnEspera } from "@/lib/pedidos-espera";
 import { getBalances, getMovements, getCounts, getSeparables, getResumenStock, isAvailable, enCajaCerrada } from "@/lib/queries";
 import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
@@ -49,7 +50,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const vePedidos = can(user, "pedidos");
   // salud de la conexión con Wix: Joel, Mel y Yura (admin / encargada)
   const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "VIEWER";
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen, enEspera] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -64,6 +65,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     vePedidos ? getFeriados() : Promise.resolve(new Set<string>()),
     veSaludWix ? getSaludWix().catch(() => null) : Promise.resolve(null),
     getResumenStock(),
+    vePedidos ? getPedidosEnEspera() : Promise.resolve([]),
   ]);
   // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
   const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
@@ -221,6 +223,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       {listos && (
         <div className="mt-4">
           <TarjetaPedidosListos r={listos} />
+        </div>
+      )}
+      {enEspera.length > 0 && (
+        <div className="mt-4">
+          <TarjetaPedidosEnEspera pedidos={enEspera} />
         </div>
       )}
       {wix && wix.revisar.length > 0 && (

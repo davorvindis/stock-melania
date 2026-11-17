@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { PEDIDOS_POR_PAGINA, contarSinDescontar, getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
-import { badgeEntrega, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
+import { badgeEntrega, badgeEspera, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
 import { fmtDateTime, fmtMoney } from "@/lib/types";
 import { actualizarPedidosAhora } from "@/lib/wix/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
@@ -34,7 +34,8 @@ const numeroPedido = (p: { wix_status: string | null; number: string | null }) =
 // armado y todavía en el local: para retirar (¿se avisó a la clienta?) o por enviar
 function avisoListo(p: PedidoWix, feriados: Set<string>) {
   if (p.state !== "PROCESSED" || p.delivery_status || p.channel_type === "POS") return null;
-  const dem = esDemorado(p.processed_at, feriados);
+  // en espera: no se avisa como demorado (el motivo se muestra aparte)
+  const dem = !p.hold_since && esDemorado(p.processed_at, feriados);
   if (metodoEntrega(p).clave === "RETIRO") {
     return p.customer_notified_at ? (
       <div className="text-xs text-emerald-800">✅ Avisada por {p.customer_notified_by}</div>
@@ -156,6 +157,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
             {p.delivered_by && <div className="text-xs text-soft">{p.delivery_status === "PICKED_UP" ? "Entregó" : "Despachó"}: {p.delivered_by}</div>}
             {demorado(p, feriados) && <div className="text-xs font-medium text-red-700">Pagado hace más de 3 días hábiles sin procesar</div>}
             {avisoListo(p, feriados)}
+            {badgeEspera(p)}
             {p.review_reason && <div className="text-xs font-medium text-amber-800">⚠ {p.review_reason}</div>}
           </Link>
         ))}
@@ -198,6 +200,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                     {badgeEstado(p)}
                     {demorado(p, feriados) && <div className="text-xs font-medium text-red-700">+3 días hábiles sin procesar</div>}
                     {avisoListo(p, feriados)}
+                    {badgeEspera(p)}
                   </td>
                   <td className={td}>
                     {p.processed_by ?? ""}
