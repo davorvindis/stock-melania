@@ -4,7 +4,7 @@ import { A, ADMIN, ENCARGADA, L, N, P, S, T, solo, type Capitulo } from "./tipos
 // el mismo cambio (ver CLAUDE.md). Cada parte lleva `ver` con la pestaña o el rol que hace
 // falta para verla; lo que no tiene `ver` lo ven todos.
 
-export const ACTUALIZADO = "16 de noviembre de 2026";
+export const ACTUALIZADO = "17 de noviembre de 2026";
 
 export const MANUAL: Capitulo[] = [
   {
@@ -204,6 +204,25 @@ export const MANUAL: Capitulo[] = [
     bloques: [
       P("Las listas de proveedores/laboratorios y de lugares donde hay mercadería de Melania."),
       P("**Mandarle mercadería a un proveedor** (packaging, envases o producto para fabricar): Proveedores → abrir el proveedor → tildar **Recibe mercadería** → Guardar. Desde ahí aparece como **destino** en Nuevo movimiento (Transferencia o Envío a proveedor) y en Stock como una ubicación más. Lo que se le manda sigue siendo de Melania y no se ofrece en la web. Para destildarlo, la ubicación tiene que estar vacía.", { s: ["proveedores"] }),
+    ],
+  },
+  {
+    id: "cheques",
+    titulo: "Cheques",
+    ver: { s: ["cheques"] },
+    bloques: [
+      P("**Para qué sirve:** controlar los cheques emitidos a proveedores y saber cuánta plata hay que tener cada mes para los débitos. Reemplaza el Excel de control de cheques. Está en **Productos y compras → Cheques**."),
+      L([
+        "**Arriba:** fondos a reservar (todo lo pendiente o propuesto), lo que resta debitar este mes, el próximo débito y los cheques con fecha pasada que siguen pendientes.",
+        "**Fondos por mes:** gráfico con lo pagado, pendiente y propuesto de cada mes. Tocá un mes para ver su **calendario** con los días de débito.",
+        "**Resumen por mes:** tabla por proveedor con el total del mes y lo que falta pagar, como la hoja Resumen del Excel.",
+      ]),
+      L([
+        "**Cargar:** completá vencimiento, proveedor, importe y concepto. Si son varios cheques iguales (por ejemplo 3 cuotas), poné la cantidad y se carga uno por mes desde esa fecha, con la cuota en el concepto.",
+        "**Pagado:** cuando el banco lo debita, tocá **Pagado**. Si fue un error, **Volver a pendiente**.",
+        "**Propuesto:** para una compra que todavía no se confirmó. Cuenta en los fondos a reservar hasta que se emita (editalo a Pendiente) o se anule.",
+        "**Anular:** los cheques no se borran; se anulan con un motivo y dejan de contar en los totales. **Editar** corrige fecha, importe o datos. Todo queda en Auditoría con tu usuario.",
+      ]),
     ],
   },
   {

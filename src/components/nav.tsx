@@ -50,6 +50,7 @@ const grupos: Grupo[] = [
       { href: "/costos", label: "Costos", section: "costos" },
       { href: "/compras", label: "Órdenes de compra", section: "compras" },
       { href: "/proveedores", label: "Proveedores", section: "proveedores" },
+      { href: "/cheques", label: "Cheques", section: "cheques" },
     ],
   },
   {

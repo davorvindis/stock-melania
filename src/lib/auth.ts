@@ -37,6 +37,7 @@ export const SECTIONS: readonly { key: string; label: string }[] = [
   { key: "conteos", label: "Conteos" },
   { key: "productos", label: "Productos" },
   { key: "proveedores", label: "Proveedores" },
+  { key: "cheques", label: "Cheques" },
   { key: "ubicaciones", label: "Ubicaciones" },
   { key: "auditoria", label: "Auditoría" },
   { key: "configuracion", label: "Configuración" },
