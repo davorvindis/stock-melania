@@ -126,7 +126,7 @@ export default async function Cheques({
       {resumen.length > 0 && (
         <Card className="mb-4 overflow-x-auto">
           <h2 className="mb-2 font-semibold">Resumen por mes</h2>
-          <table className="w-full min-w-[520px]">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-line">
                 <th className={th}>Mes</th>
@@ -134,13 +134,14 @@ export default async function Cheques({
                   <th key={b} className={`${th} text-right`}>{b}</th>
                 ))}
                 <th className={`${th} text-right`}>Total del mes</th>
+                <th className={`${th} text-right`}>Pagado</th>
                 <th className={`${th} text-right`}>Falta pagar</th>
               </tr>
             </thead>
             <tbody>
               {resumen.map((r) => (
                 <tr key={r.mes} className={`border-b border-blush-100 ${r.mes === mesSel ? "bg-blush-50" : ""}`}>
-                  <td className={td}>
+                  <td className={`${td} whitespace-nowrap`}>
                     <Link href={qs({ mes: r.mes === mesHoy ? undefined : r.mes })} className="font-medium hover:underline">
                       {mesLargo(r.mes)}
                     </Link>
@@ -149,8 +150,9 @@ export default async function Cheques({
                     <td key={b} className={`${td} text-right`}>{r.porBeneficiario.get(b) ? fmtMoney(r.porBeneficiario.get(b)!) : "—"}</td>
                   ))}
                   <td className={`${td} text-right`}>{fmtMoney(r.total)}</td>
-                  <td className={`${td} text-right font-semibold ${r.pendiente + r.propuesto > 0 ? "text-rose-deep" : "text-soft"}`}>
-                    {r.pendiente + r.propuesto > 0 ? fmtMoney(r.pendiente + r.propuesto) : "Pagado"}
+                  <td className={`${td} text-right text-emerald-800`}>{r.pagado > 0 ? fmtMoney(r.pagado) : <span className="text-soft">—</span>}</td>
+                  <td className={`${td} text-right font-semibold text-rose-deep`}>
+                    {r.pendiente + r.propuesto > 0 ? fmtMoney(r.pendiente + r.propuesto) : <span className="font-normal text-soft">—</span>}
                   </td>
                 </tr>
               ))}
@@ -162,6 +164,7 @@ export default async function Cheques({
                   </td>
                 ))}
                 <td className={`${td} text-right font-semibold`}>{fmtMoney(resumen.reduce((s, r) => s + r.total, 0))}</td>
+                <td className={`${td} text-right font-semibold text-emerald-800`}>{fmtMoney(resumen.reduce((s, r) => s + r.pagado, 0))}</td>
                 <td className={`${td} text-right font-semibold text-rose-deep`}>{fmtMoney(totalReservar)}</td>
               </tr>
             </tbody>
