@@ -117,3 +117,42 @@ export async function entregarPreventas(formData: FormData) {
   if (error) volverConError(back, error.message);
   volverOk(volver, `${data ?? allocs.length} entrega(s) de preventa registrada(s) como venta`);
 }
+
+// editar una preventa abierta: datos, cantidades (no menos de lo entregado; 0 = quitar) y productos nuevos
+export async function editarPreventa(formData: FormData) {
+  const user = await requireSection("preventa");
+  const back = "/preventa";
+  const id = uuid.safeParse(String(formData.get("preventa") ?? ""));
+  if (!id.success) volverConError(back, "Preventa inválida");
+  const parsed = preventaSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) volverConError(back, parsed.error.issues[0].message);
+  const d = parsed.data;
+
+  const lineasIds = formData.getAll("ed_line").map(String);
+  const lineasQty = formData.getAll("ed_qty").map((v) => Number(String(v).replace(",", ".")));
+  const lineas = [];
+  for (let i = 0; i < lineasIds.length; i++) {
+    if (!uuid.safeParse(lineasIds[i]).success) volverConError(back, "Línea inválida");
+    if (!(lineasQty[i] >= 0)) volverConError(back, `Producto ${i + 1}: la cantidad tiene que ser 0 o más`);
+    lineas.push({ line_id: lineasIds[i], quantity: lineasQty[i] });
+  }
+  const productos = formData.getAll("pv_producto").map(String);
+  const cantidades = formData.getAll("pv_cantidad").map((v) => Number(String(v).replace(",", ".")));
+  const nuevas = [];
+  for (let i = 0; i < productos.length; i++) {
+    if (!productos[i] && !cantidades[i]) continue;
+    if (!uuid.safeParse(productos[i]).success) volverConError(back, `Producto nuevo ${i + 1}: elegilo de la lista`);
+    if (!(cantidades[i] > 0)) volverConError(back, `Producto nuevo ${i + 1}: la cantidad debe ser mayor a 0`);
+    nuevas.push({ product_id: productos[i], quantity: cantidades[i] });
+  }
+
+  const { error } = await db().rpc("edit_preorder", {
+    p_id: id.data,
+    p_datos: { customer: d.cliente, order_ref: d.pedido ?? "", channel: d.canal, order_date: d.fecha, notes: d.notas ?? "" },
+    p_lineas: lineas,
+    p_nuevas: nuevas,
+    p_actor: user.alias,
+  });
+  if (error) volverConError(back, error.message);
+  volverOk(back, `Preventa de ${d.cliente} actualizada`);
+}

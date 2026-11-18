@@ -4,8 +4,9 @@ import { useState } from "react";
 import { BuscadorProducto, type OpcionBuscador } from "@/components/buscador-producto";
 
 // productos y cantidades de una preventa (inputs pv_producto / pv_cantidad repetidos)
-export function LineasPreventa({ productos }: { productos: OpcionBuscador[] }) {
-  const [lineas, setLineas] = useState([{ key: 0, producto: "" }]);
+// opcional: arranca sin renglones (para agregar productos al editar una preventa)
+export function LineasPreventa({ productos, opcional = false }: { productos: OpcionBuscador[]; opcional?: boolean }) {
+  const [lineas, setLineas] = useState(opcional ? [] : [{ key: 0, producto: "" }]);
   const [next, setNext] = useState(1);
   return (
     <div className="space-y-2">
@@ -30,7 +31,7 @@ export function LineasPreventa({ productos }: { productos: OpcionBuscador[] }) {
             aria-label="Cantidad"
             className="w-24 rounded-lg border border-line bg-white px-3 py-2.5 text-center text-base focus:border-blush focus:outline-none focus:ring-2 focus:ring-blush-100"
           />
-          {lineas.length > 1 && (
+          {(opcional || lineas.length > 1) && (
             <button
               type="button"
               onClick={() => setLineas((x) => x.filter((y) => y.key !== l.key))}
@@ -50,7 +51,7 @@ export function LineasPreventa({ productos }: { productos: OpcionBuscador[] }) {
         }}
         className="rounded-lg border border-dashed border-blush px-4 py-2 text-sm font-medium text-rose-deep hover:bg-blush-50"
       >
-        + Agregar otro producto
+        {opcional ? "+ Agregar producto" : "+ Agregar otro producto"}
       </button>
     </div>
   );

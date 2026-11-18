@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
 import { getBalances, getProducts, isAvailable } from "@/lib/queries";
 import { ESTADOS_PREVENTA, estadoPreventaClass, getPreventas, pendiente } from "@/lib/preventa";
-import { cancelarPreventa, crearPreventa, entregarPreventas } from "@/lib/preventa-actions";
+import { cancelarPreventa, crearPreventa, editarPreventa, entregarPreventas } from "@/lib/preventa-actions";
 import { fmtDate, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -256,6 +256,72 @@ export default async function PreventaPage({ searchParams }: { searchParams: Pro
                       Entregar (registra la venta)
                     </SubmitButton>
                   </form>
+                )}
+
+                {abierta && (
+                  <details className="mt-3 rounded-lg border border-blush-100 p-3 open:bg-blush-50/50">
+                    <summary className="cursor-pointer text-sm font-medium text-rose-deep">✏️ Editar preventa</summary>
+                    <form action={editarPreventa} className="mt-3 grid gap-3 sm:grid-cols-4">
+                      <input type="hidden" name="preventa" value={p.id} />
+                      <div className="sm:col-span-2">
+                        <label className={label}>Cliente *</label>
+                        <input type="text" name="cliente" required defaultValue={p.customer} className={input} />
+                      </div>
+                      <div>
+                        <label className={label}>N° de pedido</label>
+                        <input type="text" name="pedido" defaultValue={p.order_ref ?? ""} className={input} />
+                      </div>
+                      <div>
+                        <label className={label}>Canal</label>
+                        <select name="canal" defaultValue={p.channel} className={input}>
+                          <option value="MAYORISTA">Mayorista</option>
+                          <option value="MINORISTA">Minorista</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={label}>Fecha *</label>
+                        <input type="date" name="fecha" required defaultValue={p.order_date} className={input} />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <label className={label}>Notas / comentarios</label>
+                        <input type="text" name="notas" defaultValue={p.notes ?? ""} placeholder="ej. pidió agregar 10 monodosis más" className={input} />
+                      </div>
+                      <div className="sm:col-span-4">
+                        <label className={label}>Cantidades</label>
+                        <div className="space-y-2">
+                          {p.lines.map((l) => (
+                            <div key={l.id} className="flex flex-wrap items-center gap-2 text-sm">
+                              <input type="hidden" name="ed_line" value={l.id} />
+                              <span className="min-w-40 flex-1">{l.product.name}</span>
+                              <input
+                                type="number"
+                                name="ed_qty"
+                                min={Number(l.delivered)}
+                                step="any"
+                                required
+                                defaultValue={Number(l.quantity)}
+                                aria-label={`Cantidad de ${l.product.name}`}
+                                className="w-24 rounded-lg border border-line bg-white px-2 py-1.5 text-center"
+                              />
+                              <span className="w-full text-xs text-soft sm:w-48">
+                                {Number(l.delivered) > 0 ? `ya entregados ${fmtQty(l.delivered)}: no puede ser menos` : "en 0 se quita de la preventa"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="sm:col-span-4">
+                        <label className={label}>Agregar productos</label>
+                        <LineasPreventa productos={opciones} opcional />
+                        <p className="mt-1 text-xs text-soft">Si el producto ya está en la preventa, se suma a esa cantidad.</p>
+                      </div>
+                      <div className="sm:col-span-4">
+                        <SubmitButton className="rounded-lg bg-rose-deep px-5 py-2 text-sm font-semibold text-white hover:bg-rose-deeper">
+                          Guardar cambios
+                        </SubmitButton>
+                      </div>
+                    </form>
+                  </details>
                 )}
 
                 {abierta && (

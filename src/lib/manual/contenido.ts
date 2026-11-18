@@ -382,6 +382,7 @@ export const MANUAL: Capitulo[] = [
         "Cuando entra la mercadería y se carga el Nuevo ingreso, aparece **Preventas para repartir**, primero las más viejas. Revisá y tocá **Confirmar y registrar las ventas**.",
         "Si llegó menos, se reparte lo que alcanza y el resto sigue pendiente.",
         "Desde la preventa también podés **Entregar desde el stock** o **Cancelar** con motivo.",
+        "**✏️ Editar preventa** (solo pendientes o parciales): cambiar cliente, N° de pedido, canal, fecha y notas (por ejemplo un comentario del cliente), subir o bajar cantidades y **agregar productos** (si el producto ya estaba, se suma). Una cantidad no puede quedar por debajo de lo ya entregado; en **0** se quita el producto si no se entregó nada. Si con el cambio ya está todo entregado, pasa sola a Entregada. No mueve stock y queda en Auditoría quién lo cambió y qué había antes.",
       ]),
     ],
   },
