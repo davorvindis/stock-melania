@@ -250,6 +250,7 @@ export const MANUAL: Capitulo[] = [
       ]),
       S("Pedidos web", [
         P("Cuando un pedido de la tienda web se **paga**, Stock Melania lo recibe solo y **reserva** los productos en el **Depósito**. Lo mismo con los pedidos creados a mano en el panel de Wix (por ejemplo, mayoristas) cuando quedan pagados. **Reservado** quiere decir que el producto sigue en el Depósito pero ya está apartado."),
+        A("Si la clienta **pagó una parte** (en Wix queda \"parcialmente pago\", por ejemplo una mayorista que paga la mitad y retira todo cuando completa), el pedido **se reserva igual**: la mercadería queda apartada y nadie la puede vender. El pedido y la lista muestran **💰 Pago parcial** con cuánto pagó y **cuánto falta cobrar**. Se puede armar, pero **no se entrega hasta que pague el resto**. Cuando se registra el resto del pago en Wix, el pedido pasa a pagado solo. **No hace falta poner descuentos ni marcarlo pagado para que reserve.**", "Pago parcial", "ambar"),
         T(["Estado", "Qué significa"], [
           ["**Reservado**", "La clienta pagó. El producto está apartado en el Depósito, falta armarlo."],
           ["**Procesado**", "Ya lo armaron y salió del stock. Está listo para despachar o entregar."],
@@ -259,7 +260,7 @@ export const MANUAL: Capitulo[] = [
         ]),
         L([
           "**Sin N° · pago sin terminar** (filtro Sin pagar): la clienta empezó a pagar en la web pero no terminó (abandonó o el pago quedó en proceso). Wix pone el número recién cuando aprueba el pago. Si después paga, toma número; si vuelve a intentar, Wix crea otro pedido, por eso a veces la misma clienta aparece primero sin número y después con número. Los que no tienen número no reservan ni descuentan nada.",
-          "**Editar un pedido en Wix antes de que esté pagado** (por ejemplo uno parcialmente pago): si Wix te hace sacar el ítem y agregarlo de nuevo con otra cantidad, en Melania la línea sacada aparece **tachada** con \"Sacado del pedido en Wix: no descuenta stock\". Al pagarse se reserva solo lo que quedó en Wix. Mientras no está pagado, los productos dicen \"Se reserva cuando se pague\".",
+          "**Editar un pedido en Wix antes de que esté pagado:** si Wix te hace sacar el ítem y agregarlo de nuevo con otra cantidad, en Melania la línea sacada aparece **tachada** con \"Sacado del pedido en Wix: no descuenta stock\". Al pagarse se reserva solo lo que quedó en Wix. Mientras no está pagado, los productos dicen \"Se reserva cuando se pague\".",
         ]),
       ]),
       S("Cómo armar y despachar un pedido", [

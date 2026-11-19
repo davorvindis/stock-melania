@@ -25,6 +25,17 @@ export function demorado(p: PedidoWix, feriados: Set<string>): boolean {
   return !p.hold_since && (p.state === "RESERVED" || p.state === "PARTIAL") && !!p.paid_at && diasHabilesDesde(p.paid_at, feriados) > 3;
 }
 
+// pagó una parte: se reserva igual, pero no se entrega sin cobrar el resto
+export function badgePagoParcial(p: PedidoWix) {
+  if (p.payment_status !== "PARTIALLY_PAID" || p.delivery_status) return null;
+  const saldo = Number(p.pago_parcial_saldo ?? 0);
+  return (
+    <div className="text-xs font-medium text-amber-800">
+      💰 Pago parcial{saldo > 0 ? `: falta cobrar $${Math.round(saldo).toLocaleString("es-AR")}` : ""}
+    </div>
+  );
+}
+
 // método de entrega de Wix → grupo para armar (la moto pasa ~13 h, el correo hasta 18 h)
 export type Entrega = { clave: "MOTO" | "CORREO" | "RETIRO" | "OTRO" | "NINGUNA"; label: string; orden: number; color: string };
 export function metodoEntrega(p: PedidoWix): Entrega {

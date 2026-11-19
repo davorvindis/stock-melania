@@ -265,6 +265,17 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
           <p className="text-sm font-medium text-red-800">Pagado hace más de 3 días hábiles y todavía no se procesó.</p>
         </Card>
       )}
+      {p.payment_status === "PARTIALLY_PAID" && !p.delivery_status && (
+        <Card className="mt-3 border-amber-300 bg-amber-50">
+          <p className="text-sm">
+            <b className="text-amber-900">💰 Pago parcial:</b> pagó <b>{fmtMoney(Number(p.pago_parcial_pagado ?? 0))}</b>, falta
+            cobrar <b>{fmtMoney(Number(p.pago_parcial_saldo ?? 0))}</b>.
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            La mercadería queda reservada igual. Se puede armar, pero <b>no se entrega hasta que pague el resto</b>. Cuando se registra el pago en Wix, el pedido pasa a pagado solo.
+          </p>
+        </Card>
+      )}
       {!settings.enabled && (
         <Card className="mt-3 border-amber-200">
           <p className="text-sm text-amber-800">La integración con Wix está <b>desconectada</b>: al procesar se descuenta el stock pero Wix no se entera.</p>

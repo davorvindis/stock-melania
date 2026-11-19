@@ -38,6 +38,8 @@ export type PedidoWix = {
   hold_since: string | null;
   hold_by: string | null;
   hold_products: string[];
+  pago_parcial_pagado: string | null; // Wix balanceSummary: lo cobrado y lo que falta (pago parcial)
+  pago_parcial_saldo: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -92,7 +94,7 @@ export const ESTADOS_ENTREGA: Record<"DISPATCHED" | "PICKED_UP", string> = {
   PICKED_UP: "Retirado",
 };
 
-const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, delivery_status, delivered_at, delivered_by, customer_notified_at, customer_notified_by, tracking_number, tracking_synced, tracking_error, refund_resolution, refund_resolved_at, refund_resolved_by, hold_reason, hold_since, hold_by, hold_products, wholesale, envio_titulo:raw->shippingInfo->>title, created_at, updated_at";
+const SELECT = "id, external_id, number, channel_type, customer, email, wix_status, payment_status, fulfillment_status, state, location:locations(id, name), total, currency, ordered_at, paid_at, processed_at, processed_by, review_reason, wix_fulfilled, delivery_status, delivered_at, delivered_by, customer_notified_at, customer_notified_by, tracking_number, tracking_synced, tracking_error, refund_resolution, refund_resolved_at, refund_resolved_by, hold_reason, hold_since, hold_by, hold_products, wholesale, envio_titulo:raw->shippingInfo->>title, pago_parcial_pagado:raw->balanceSummary->paid->>amount, pago_parcial_saldo:raw->balanceSummary->balance->>amount, created_at, updated_at";
 
 export const PEDIDOS_POR_PAGINA = 50;
 // delivery_rank (columna calculada en la base, misma regla que metodoEntrega)

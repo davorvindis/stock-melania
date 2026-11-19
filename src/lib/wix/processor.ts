@@ -146,7 +146,10 @@ export async function reconciliarPedido(o: WixOrder): Promise<string> {
   if (ed.error) throw new Error(`wix_sync_order_items: ${ed.error.message}`);
   const edicion = ed.data as { resultado: string; avisos?: string[] };
   const marca = edicion.resultado.startsWith("editado") ? `+${edicion.resultado}` : "";
-  if (!pagado) {
+  // pago parcial (ej. mayorista que pagó una parte y retira cuando completa): se reserva igual
+  // para que la mercadería quede apartada; el pedido muestra cuánto falta cobrar
+  const pagoParcial = n.payment_status === "PARTIALLY_PAID";
+  if (!pagado && !pagoParcial) {
     for (const aviso of edicion.avisos ?? []) await cli.rpc("_wix_append_review", { p_order: orderId, p_text: aviso });
     return `esperando-pago:${n.payment_status}${marca}`;
   }

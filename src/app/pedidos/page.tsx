@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSection } from "@/lib/auth";
 import { PEDIDOS_POR_PAGINA, contarSinDescontar, getPedidosWix, type PedidoWix } from "@/lib/wix/queries";
-import { badgeEntrega, badgeEspera, badgeEstado, demorado, metodoEntrega } from "@/components/pedido-badge";
+import { badgeEntrega, badgeEspera, badgeEstado, badgePagoParcial, demorado, metodoEntrega } from "@/components/pedido-badge";
 import { fmtDateTime, fmtMoney } from "@/lib/types";
 import { actualizarPedidosAhora } from "@/lib/wix/actions";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
@@ -158,6 +158,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
             {demorado(p, feriados) && <div className="text-xs font-medium text-red-700">Pagado hace más de 3 días hábiles sin procesar</div>}
             {avisoListo(p, feriados)}
             {badgeEspera(p)}
+            {badgePagoParcial(p)}
             {p.review_reason && <div className="text-xs font-medium text-amber-800">⚠ {p.review_reason}</div>}
           </Link>
         ))}
@@ -201,6 +202,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                     {demorado(p, feriados) && <div className="text-xs font-medium text-red-700">+3 días hábiles sin procesar</div>}
                     {avisoListo(p, feriados)}
                     {badgeEspera(p)}
+                    {badgePagoParcial(p)}
                   </td>
                   <td className={td}>
                     {p.processed_by ?? ""}
