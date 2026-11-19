@@ -44,7 +44,7 @@ function Variacion({ v, invertir = false }: { v: number | null; invertir?: boole
 export default async function Costos({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; error?: string; mes?: string; q?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; mes?: string; q?: string; ver?: string }>;
 }) {
   await requireSection("costos");
   const sp = await searchParams;
@@ -66,7 +66,13 @@ export default async function Costos({
   const margenProm = conPrecio.length
     ? conPrecio.reduce((s, f) => s + (margen(f.sale_price, Number(f.total_cost)) ?? 0), 0) / conPrecio.length
     : null;
-  const subieron = filas.filter((f) => (variacion(Number(f.total_cost), prev.get(f.item) ? Number(prev.get(f.item)!.total_cost) : null) ?? 0) > 0.05);
+  // variación del costo contra el mes anterior (null = no estaba el mes anterior)
+  const varCosto = (f: FilaCosto) => {
+    const p = prev.get(f.item);
+    return variacion(Number(f.total_cost), p ? Number(p.total_cost) : null);
+  };
+  const subieron = filas.filter((f) => (varCosto(f) ?? 0) > 0.05);
+  const bajaron = filas.filter((f) => (varCosto(f) ?? 0) < -0.05);
   const listaProductos = productos.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name }));
   const listaProveedores = proveedores.map((p) => ({ id: p.id, name: p.name }));
 
@@ -80,6 +86,36 @@ export default async function Costos({
         return palabras.every((w) => texto.includes(w));
       })
     : filas;
+
+  // filtro / orden: subieron (de más a menos), bajaron (de más a menos), sin cambios, nuevos, menor margen
+  const VER = ["subieron", "bajaron", "iguales", "nuevos", "margen"] as const;
+  const ver = (VER as readonly string[]).includes(sp.ver ?? "") ? (sp.ver as (typeof VER)[number]) : null;
+  const margenDe = (f: FilaCosto) => margen(f.sale_price != null ? Number(f.sale_price) : null, Number(f.total_cost));
+  const lista = (() => {
+    const base = visibles;
+    if (ver === "subieron") return base.filter((f) => (varCosto(f) ?? 0) > 0.05).sort((a, b) => varCosto(b)! - varCosto(a)!);
+    if (ver === "bajaron") return base.filter((f) => (varCosto(f) ?? 0) < -0.05).sort((a, b) => varCosto(a)! - varCosto(b)!);
+    if (ver === "iguales") return base.filter((f) => { const v = varCosto(f); return v != null && Math.abs(v) <= 0.05; });
+    if (ver === "nuevos") return base.filter((f) => !prev.has(f.item));
+    if (ver === "margen") return base.filter((f) => margenDe(f) != null).sort((a, b) => margenDe(a)! - margenDe(b)!);
+    return base;
+  })();
+  const cuenta = {
+    subieron: visibles.filter((f) => (varCosto(f) ?? 0) > 0.05).length,
+    bajaron: visibles.filter((f) => (varCosto(f) ?? 0) < -0.05).length,
+    iguales: visibles.filter((f) => { const v = varCosto(f); return v != null && Math.abs(v) <= 0.05; }).length,
+    nuevos: visibles.filter((f) => !prev.has(f.item)).length,
+  };
+  const url = (o: { mes?: string; q?: string; ver?: string | null }) => {
+    const u = new URLSearchParams();
+    const m = o.mes ?? periodo?.slice(0, 7);
+    if (m) u.set("mes", m);
+    const qq = o.q ?? q;
+    if (qq) u.set("q", qq);
+    const vv = o.ver === undefined ? ver : o.ver;
+    if (vv) u.set("ver", vv);
+    return `/costos?${u.toString()}`;
+  };
 
   return (
     <div>
@@ -101,7 +137,7 @@ export default async function Costos({
         {periodos.map((p) => (
           <Link
             key={p}
-            href={`/costos?mes=${p.slice(0, 7)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            href={url({ mes: p.slice(0, 7) })}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-sm capitalize ${
               p === periodo ? "border-rose-deep bg-rose-deep font-semibold text-white" : "border-line bg-white text-soft hover:border-blush"
             }`}
@@ -116,7 +152,7 @@ export default async function Costos({
           <p className="mb-3 text-sm text-soft">Todavía no hay costos cargados. Agregá el primer ítem:</p>
         </Card>
       ) : (
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Card>
             <div className="text-sm text-soft">Ítems en {nombreMes(periodo)}</div>
             <div className="mt-1 font-display text-4xl leading-none">{filas.length}</div>
@@ -125,14 +161,26 @@ export default async function Costos({
             <div className="text-sm text-soft">Margen promedio (minorista)</div>
             <div className={`mt-1 font-display text-4xl leading-none ${claseMargen(margenProm)}`}>{pct(margenProm)}</div>
           </Card>
-          <Card>
-            <div className="text-sm text-soft">
-              Subieron de costo{anterior ? ` vs. ${nombreMes(anterior)}` : ""}
-            </div>
-            <div className={`mt-1 font-display text-4xl leading-none ${subieron.length ? "text-red-700" : ""}`}>
-              {anterior ? subieron.length : "—"}
-            </div>
-          </Card>
+          <Link href={url({ q: "", ver: "subieron" })} className="block">
+            <Card className="h-full hover:border-blush">
+              <div className="text-sm text-soft">
+                Subieron de costo{anterior ? ` vs. ${nombreMes(anterior)}` : ""}
+              </div>
+              <div className={`mt-1 font-display text-4xl leading-none ${subieron.length ? "text-red-700" : ""}`}>
+                {anterior ? subieron.length : "—"}
+              </div>
+            </Card>
+          </Link>
+          <Link href={url({ q: "", ver: "bajaron" })} className="block">
+            <Card className="h-full hover:border-blush">
+              <div className="text-sm text-soft">
+                Bajaron de costo{anterior ? ` vs. ${nombreMes(anterior)}` : ""}
+              </div>
+              <div className={`mt-1 font-display text-4xl leading-none ${bajaron.length ? "text-emerald-700" : ""}`}>
+                {anterior ? bajaron.length : "—"}
+              </div>
+            </Card>
+          </Link>
         </div>
       )}
 
@@ -145,6 +193,7 @@ export default async function Costos({
           </p>
           <form method="get" className="mb-3 flex flex-wrap gap-2">
             <input type="hidden" name="mes" value={periodo.slice(0, 7)} />
+            {ver && <input type="hidden" name="ver" value={ver} />}
             <input
               type="search"
               name="q"
@@ -164,10 +213,40 @@ export default async function Costos({
               Buscar
             </button>
           </form>
-          {q && (
+          <div className="mb-3 flex flex-wrap gap-1.5 text-sm">
+            {(
+              [
+                [null, "Todos", null],
+                ["subieron", "▲ Subieron", cuenta.subieron],
+                ["bajaron", "▼ Bajaron", cuenta.bajaron],
+                ["iguales", "Sin cambios", cuenta.iguales],
+                ["nuevos", "Nuevos este mes", cuenta.nuevos],
+                ["margen", "Menor margen primero", null],
+              ] as [string | null, string, number | null][]
+            )
+              .filter(([v]) => anterior || !["subieron", "bajaron", "iguales", "nuevos"].includes(v ?? ""))
+              .map(([v, etiqueta, n]) => (
+                <Link
+                  key={etiqueta}
+                  href={url({ ver: v })}
+                  className={`rounded-full border px-3 py-1 ${
+                    ver === v ? "border-rose-deep bg-rose-deep font-semibold text-white" : "border-line bg-white text-soft hover:border-blush"
+                  }`}
+                >
+                  {etiqueta}
+                  {n != null && <span className={ver === v ? "" : "text-ink"}> ({n})</span>}
+                </Link>
+              ))}
+          </div>
+          {ver && anterior && ["subieron", "bajaron"].includes(ver) && (
+            <p className="mb-2 text-xs text-soft">
+              Ordenados de {ver === "subieron" ? "lo que más subió" : "lo que más bajó"} a lo que menos, comparando el costo contra {nombreMes(anterior)}.
+            </p>
+          )}
+          {(q || ver) && (
             <p className="mb-2 text-sm text-soft">
-              {visibles.length} de {filas.length} ítem(s) ·{" "}
-              <Link href={`/costos?mes=${periodo.slice(0, 7)}`} className="font-medium text-rose-deep hover:underline">
+              {lista.length} de {filas.length} ítem(s) ·{" "}
+              <Link href={url({ q: "", ver: null })} className="font-medium text-rose-deep hover:underline">
                 Ver todos
               </Link>
             </p>
@@ -190,7 +269,7 @@ export default async function Costos({
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((f) => {
+                {lista.map((f) => {
                   const costo = Number(f.total_cost);
                   const precio = f.sale_price != null ? Number(f.sale_price) : null;
                   const p = prev.get(f.item);
