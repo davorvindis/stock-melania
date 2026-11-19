@@ -12,7 +12,7 @@ import {
   type FilaCosto,
 } from "@/lib/compras";
 import { copiarMes } from "@/lib/compras-actions";
-import { conPrecioDeLista } from "@/lib/precios";
+import { conPrecioDeLista, getCostosPorProducto } from "@/lib/precios";
 import { fmtMoney } from "@/lib/types";
 import { Card, Flash, PageTitle, input, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -52,12 +52,23 @@ export default async function Costos({
   const pedido = sp.mes && /^\d{4}-\d{2}$/.test(sp.mes) ? `${sp.mes}-01` : null;
   const periodo = pedido ?? periodos[0] ?? null;
   const anterior = periodo ? periodos.find((p) => p < periodo) ?? null : null;
-  const [filas, previas, productos, proveedores] = await Promise.all([
-    periodo ? getCostos(periodo).then(conPrecioDeLista) : Promise.resolve([] as (FilaCosto & { precio_de_lista: boolean })[]),
+  const [filas, previas, productos, proveedores, costosHist] = await Promise.all([
+    periodo ? getCostos(periodo).then(conPrecioDeLista) : Promise.resolve([] as (FilaCosto & { precio_de_lista: boolean; ultima_suba: string | null; pct_ultima_suba: number | null })[]),
     anterior ? getCostos(anterior).then(conPrecioDeLista) : Promise.resolve([] as (FilaCosto & { precio_de_lista: boolean })[]),
     getProducts(),
     getSuppliers(),
+    getCostosPorProducto(),
   ]);
+  const fmtFecha = (d: string) => `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}/${d.slice(0, 4)}`;
+  // cuánto subió el costo desde el mes de la última suba del precio de lista hasta el mes que se mira
+  const costoDesdeSuba = (f: FilaCosto & { ultima_suba: string | null }) => {
+    if (!f.ultima_suba || !f.product_id) return null;
+    const hist = costosHist.get(f.product_id);
+    const mesSuba = `${f.ultima_suba.slice(0, 7)}-01`;
+    const base = hist ? [...hist].reverse().find((c) => c.period <= mesSuba) : undefined;
+    if (!base || base.period === f.period) return null;
+    return variacion(Number(f.total_cost), base.total);
+  };
   const prev = new Map(previas.map((f) => [f.item, f]));
   const siguiente = periodo ? mesSiguiente(periodo) : null;
   const existeSiguiente = siguiente ? periodos.includes(siguiente) : true;
@@ -290,6 +301,24 @@ export default async function Costos({
                         {fmtMoney(precio)}
                         <Variacion v={variacion(precio, p?.sale_price != null ? Number(p.sale_price) : null)} invertir />
                         {f.precio_de_lista && <span className="block text-[11px] text-soft">de la lista de precios</span>}
+                        {f.precio_de_lista &&
+                          (f.ultima_suba ? (
+                            <span className="block text-[11px] text-soft">
+                              Última suba: <b className="font-medium text-ink">{fmtFecha(f.ultima_suba)}</b>
+                              {f.pct_ultima_suba != null && ` (+${pct(f.pct_ultima_suba)})`}
+                              {(() => {
+                                const c = costoDesdeSuba(f);
+                                if (c == null || Math.abs(c) < 0.05) return null;
+                                return (
+                                  <span className={`block ${c > 0 ? "font-medium text-red-700" : "text-emerald-700"}`}>
+                                    costo {c > 0 ? "+" : "−"}{pct(Math.abs(c))} desde entonces
+                                  </span>
+                                );
+                              })()}
+                            </span>
+                          ) : (
+                            <span className="block text-[11px] text-soft">Sin subas registradas</span>
+                          ))}
                       </td>
                       <td className={`${td} whitespace-nowrap`}>{precio != null ? fmtMoney(precio - costo) : "—"}</td>
                       <td className={`${td} ${claseMargen(margen(precio, costo))}`}>{pct(margen(precio, costo))}</td>

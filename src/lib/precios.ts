@@ -173,11 +173,16 @@ export function finDeMes(period: string): string {
 // (si el ítem está vinculado a un producto con precio); si no, el cargado a mano.
 export async function conPrecioDeLista<T extends { product_id: string | null; period: string; sale_price: number | null }>(
   filas: T[]
-): Promise<(T & { precio_de_lista: boolean })[]> {
+): Promise<(T & { precio_de_lista: boolean; ultima_suba: string | null; pct_ultima_suba: number | null })[]> {
   const precios = await getPrecioListaPorProducto();
+  const hoy = hoyAR();
   return filas.map((f) => {
     const cambios = f.product_id ? precios.get(f.product_id) : undefined;
-    const v = cambios ? vigenteEn(cambios, "LISTA", finDeMes(f.period)) : null;
-    return v != null ? { ...f, sale_price: v, precio_de_lista: true } : { ...f, precio_de_lista: false };
+    const cierre = finDeMes(f.period);
+    const v = cambios ? vigenteEn(cambios, "LISTA", cierre) : null;
+    // última suba del precio de lista hasta ese mes (o hasta hoy, si es el mes en curso)
+    const a = cambios ? analizar(cambios, cierre < hoy ? cierre : hoy) : null;
+    const suba = { ultima_suba: a?.ultimaSuba ?? null, pct_ultima_suba: a?.pctUltimaSuba ?? null };
+    return v != null ? { ...f, sale_price: v, precio_de_lista: true, ...suba } : { ...f, precio_de_lista: false, ...suba };
   });
 }
