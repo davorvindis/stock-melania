@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { db } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { agruparPedidos, diasRecientes, getVentas, rangoMesActual } from "@/lib/ventas";
 import { contarPendientesVacaciones } from "@/lib/personal";
@@ -50,7 +51,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const vePedidos = can(user, "pedidos");
   // salud de la conexión con Wix: Joel, Mel y Yura (admin / encargada)
   const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "VIEWER";
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen, enEspera] = await Promise.all([
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen, enEspera, conMinimo] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -66,6 +67,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     veSaludWix ? getSaludWix().catch(() => null) : Promise.resolve(null),
     getResumenStock(),
     vePedidos ? getPedidosEnEspera() : Promise.resolve([]),
+    // productos con stock mínimo: los que no tienen nada no aparecen en los saldos
+    db().from("products").select("id, sku, name, type, min_stock").eq("active", true).gt("min_stock", 0).then((r) => r.data ?? []),
   ]);
   // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
   const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
@@ -93,7 +96,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     if (ventaLocs.has(b.location.id) && (isAvailable(b) || enCajaCerrada(b))) cur.qty += Number(b.quantity);
     porProducto.set(b.product.id, cur);
   }
-  const bajoMinimo = [...porProducto.values()].filter((p) => p.min > 0 && p.qty < p.min);
+  // los que se quedaron sin nada (sin saldo) también cuentan
+  for (const p of conMinimo) {
+    if (!porProducto.has(p.id)) porProducto.set(p.id, { sku: p.sku, name: p.name, type: p.type, min: Number(p.min_stock), qty: 0 });
+  }
+  // primero los que están en 0, después los más lejos del mínimo
+  const bajoMinimo = [...porProducto.values()]
+    .filter((p) => p.min > 0 && p.qty < p.min)
+    .sort((a, b) => a.qty / a.min - b.qty / b.min);
   // blisters/packs sin separar de los que están bajo mínimo (ej. Monodosis Botox x1)
   const sinSeparar = (sku: string) => {
     const id = [...porProducto.entries()].find(([, v]) => v.sku === sku)?.[0];
@@ -343,6 +353,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <ul className="space-y-1 text-sm">
             {bajoMinimo.map((p) => (
               <li key={p.sku}>
+                {p.qty <= 0 && <span className="mr-1.5 rounded-full bg-red-700 px-2 py-0.5 text-xs font-semibold text-white">SIN STOCK</span>}
                 <span className="font-medium">{p.name}</span> ({p.sku}): disponible{" "}
                 <span className="font-semibold text-red-700">{fmtQty(p.qty)}</span> / mínimo {fmtQty(p.min)}
                 {sinSeparar(p.sku).map((x) => (
