@@ -346,6 +346,8 @@ export const MANUAL: Capitulo[] = [
       L([
         "Filtros: fechas (con botones rápidos), canal (minorista, mayorista, ambos u otras salidas), persona, ubicación y producto. Arranca en el mes actual.",
         "**Resumen** (por persona y top 10) · **Por producto** · **Por pedido** (tocá para ver los productos).",
+        "Las ventas del **POS del Store** y de la **web** las registra Wix sola: figuran a nombre de **Wix (POS del Store y web)**, no de quien vendió. Para ver todo lo que vendió el Store elegí ubicación **Store** y **Todas las personas**. Si filtrás por una persona (por ejemplo Karla) solo ves lo que cargó a mano, y arriba aparece un aviso con un atajo.",
+        "**Trazabilidad del Store:** lo transferido al Store, menos lo vendido (Store + Todas las personas), menos las Otras salidas (uso interno, regalo, muestra), tiene que dar lo que hay físico.",
         "**Descargar Excel** con lo filtrado. Las ventas revertidas no se cuentan.",
       ]),
     ],

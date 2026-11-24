@@ -26,6 +26,10 @@ const VISTAS = [
   ["pedidos", "Por pedido"],
 ] as const;
 
+// las ventas que entran solas desde Wix (POS del Store y web) quedan a nombre de "wix"
+const ACTOR_WIX = "wix";
+const nombrePersona = (a: string | null) => (a === ACTOR_WIX ? "Wix (POS del Store y web)" : (a ?? "—"));
+
 const canalClass = (t: string) =>
   t === "WHOLESALE_SALE" ? "bg-violet-100 text-violet-800" : t === "SALE" ? "bg-blush-100 text-rose-deeper" : "bg-stone-200 text-stone-700";
 
@@ -83,7 +87,8 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
         </select>
         <select name="persona" defaultValue={sp.persona ?? ""} aria-label="Persona" className={input}>
           <option value="">Todas las personas</option>
-          {(perfiles ?? []).map((p) => (
+          <option value={ACTOR_WIX}>{nombrePersona(ACTOR_WIX)}</option>
+          {(perfiles ?? []).filter((p) => p.alias !== ACTOR_WIX).map((p) => (
             <option key={p.alias} value={p.alias}>
               {p.alias}
             </option>
@@ -114,11 +119,32 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
       </form>
       <p className="mb-4 text-sm text-soft">
         Del {fmtDate(f.desde)} al {fmtDate(f.hasta)}
-        {sp.persona ? ` · ${sp.persona}` : ""} · las ventas revertidas no se cuentan ·{" "}
+        {sp.persona ? ` · ${nombrePersona(sp.persona)}` : ""} · las ventas revertidas no se cuentan ·{" "}
         <Link href="/ventas" className="font-medium text-rose-deep hover:underline">
           Este mes
         </Link>
       </p>
+
+      {sp.persona && sp.persona !== ACTOR_WIX && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Ojo: las ventas del <b>POS del Store</b> y de la <b>web</b> las registra Wix sola, a nombre de “{nombrePersona(ACTOR_WIX)}”, no de quien
+          vendió. Filtrando por {sp.persona} solo ves lo que cargó a mano.{" "}
+          <Link href={`/ventas${qs({ persona: undefined })}`} className="font-semibold underline">
+            Ver con todas las personas
+          </Link>
+          {!sp.ubicacion && ubicaciones.some((u) => u.name === "Store") && (
+            <>
+              {" · "}
+              <Link
+                href={`/ventas${qs({ persona: undefined, ubicacion: ubicaciones.find((u) => u.name === "Store")!.id })}`}
+                className="font-semibold underline"
+              >
+                Ver todo lo vendido en el Store
+              </Link>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card>
@@ -180,7 +206,7 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
                   <tr key={r.persona} className="border-b border-blush-100">
                     <td className={td}>
                       <Link href={`/ventas${qs({ persona: r.persona, vista: "pedidos" })}`} className="font-medium hover:text-rose-deep hover:underline">
-                        {r.persona}
+                        {nombrePersona(r.persona)}
                       </Link>
                     </td>
                     <td className={td}>{r.pedidos}</td>
@@ -260,7 +286,7 @@ export default async function Ventas({ searchParams }: { searchParams: Promise<S
                     </span>
                     <span className="font-semibold">{p.numero ?? "Sin N° de pedido"}</span>
                     <span className="text-sm text-soft">
-                      {fmtDateTime(p.fecha)} · {p.actor ?? "—"} · {p.ubicacion ?? "—"}
+                      {fmtDateTime(p.fecha)} · {nombrePersona(p.actor)} · {p.ubicacion ?? "—"}
                     </span>
                   </div>
                   <span className="text-sm">
