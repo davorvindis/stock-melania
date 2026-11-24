@@ -2,14 +2,34 @@ import Link from "next/link";
 import { randomUUID } from "crypto";
 import { requireSection } from "@/lib/auth";
 import { getBalances, getProducts, isAvailable } from "@/lib/queries";
-import { ESTADOS_PREVENTA, estadoPreventaClass, getPreventas, pendiente } from "@/lib/preventa";
-import { cancelarPreventa, crearPreventa, editarPreventa, entregarPreventas } from "@/lib/preventa-actions";
-import { fmtDate, fmtQty } from "@/lib/types";
+import { ESTADOS_PREVENTA, MEDIOS_PAGO, estadoPreventaClass, getPreventas, numeroComprobante, pendiente, resumenPago } from "@/lib/preventa";
+import { anularPagoPreventa, cancelarPreventa, crearPreventa, editarPreventa, entregarPreventas, registrarPagoPreventa } from "@/lib/preventa-actions";
+import { fmtDate, fmtMoney, fmtQty } from "@/lib/types";
 import { Card, Flash, PageTitle, input, label, th, td } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LineasPreventa } from "@/components/lineas-preventa";
 
 export const dynamic = "force-dynamic";
+
+const ETIQUETA_PAGO = {
+  PAGADA: { texto: "pagada", clase: "bg-emerald-100 text-emerald-800" },
+  SENADA: { texto: "señada", clase: "bg-sky-100 text-sky-800" },
+  ABONO: { texto: "con pago", clase: "bg-sky-100 text-sky-800" },
+  SIN_PAGO: { texto: "sin pago", clase: "bg-red-50 text-red-700" },
+} as const;
+
+function SelectMedio({ requerido }: { requerido?: boolean }) {
+  return (
+    <select name="medio" required={requerido} defaultValue="" className={input}>
+      <option value="">Elegí…</option>
+      {Object.entries(MEDIOS_PAGO).map(([v, t]) => (
+        <option key={v} value={v}>
+          {t}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 type SP = { ok?: string; error?: string; estado?: string; q?: string };
 
@@ -119,8 +139,21 @@ export default async function PreventaPage({ searchParams }: { searchParams: Pro
             </div>
             <div className="sm:col-span-3">
               <label className={label}>Notas</label>
-              <input type="text" name="notas" placeholder="ej. pagó seña, envío por Andreani" className={input} />
+              <input type="text" name="notas" placeholder="ej. envío por Andreani" className={input} />
             </div>
+            <div>
+              <label className={label}>Total de la preventa</label>
+              <input type="text" inputMode="decimal" name="total" placeholder="opcional, ej. 1.500.000" className={input} />
+            </div>
+            <div>
+              <label className={label}>Monto abonado</label>
+              <input type="text" inputMode="decimal" name="abonado" placeholder="ej. 500.000" className={input} />
+            </div>
+            <div>
+              <label className={label}>Medio de pago</label>
+              <SelectMedio />
+            </div>
+            <p className="self-end text-xs text-soft">Si pagó algo al reservar. Después podés sumar más pagos desde la preventa.</p>
             <div className="sm:col-span-4">
               <label className={label}>Productos *</label>
               <LineasPreventa productos={opciones} />
@@ -165,6 +198,8 @@ export default async function PreventaPage({ searchParams }: { searchParams: Pro
         {lista.map((p) => {
           const abierta = p.status === "PENDIENTE" || p.status === "PARCIAL";
           const conStock = p.lines.filter((l) => pendiente(l) > 0 && totalStock(l.product.id) > 0);
+          const pago = resumenPago(p);
+          const etiquetaPago = pago.estado ? ETIQUETA_PAGO[pago.estado] : null;
           return (
             <details key={p.id} className="rounded-xl border border-line bg-white p-3">
               <summary className="cursor-pointer list-none">
@@ -178,6 +213,9 @@ export default async function PreventaPage({ searchParams }: { searchParams: Pro
                   <span className="flex items-center gap-2">
                     {abierta && conStock.length > 0 && (
                       <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">hay stock</span>
+                    )}
+                    {etiquetaPago && p.status !== "CANCELADA" && (
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${etiquetaPago.clase}`}>{etiquetaPago.texto}</span>
                     )}
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${estadoPreventaClass(p.status)}`}>{ESTADOS_PREVENTA[p.status]}</span>
                   </span>
@@ -211,6 +249,91 @@ export default async function PreventaPage({ searchParams }: { searchParams: Pro
                 </table>
                 {p.notes && <p className="mt-2 text-sm text-soft">📝 {p.notes}</p>}
                 <p className="mt-1 text-xs text-soft">Cargó {p.created_by ?? "—"}</p>
+
+                <div className="mt-3 rounded-lg border border-blush-100 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold">💵 Pagos</h3>
+                    <span className="text-sm">
+                      Abonado <b>{fmtMoney(pago.pagado)}</b>
+                      {pago.total !== null && (
+                        <>
+                          {" "}de {fmtMoney(pago.total)}
+                          {" · "}
+                          {pago.saldo ? <b className="text-amber-700">falta {fmtMoney(pago.saldo)}</b> : <b className="text-emerald-700">pagada</b>}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  {p.payments.length > 0 && (
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {p.payments.map((x) => (
+                        <li key={x.id} className={`flex flex-wrap items-center gap-x-2 border-t border-blush-100 pt-1 ${x.voided_at ? "text-soft line-through" : ""}`}>
+                          <span>{fmtDate(x.paid_on)}</span>
+                          <span className="font-semibold">{fmtMoney(x.amount)}</span>
+                          <span className="text-soft">
+                            {MEDIOS_PAGO[x.method] ?? x.method}
+                            {x.notes ? ` · ${x.notes}` : ""} · cargó {x.created_by ?? "—"}
+                          </span>
+                          {x.voided_at ? (
+                            <span className="text-xs no-underline">anulado por {x.voided_by}: {x.void_reason}</span>
+                          ) : (
+                            p.status !== "CANCELADA" && (
+                              <details className="ml-auto">
+                                <summary className="cursor-pointer text-xs text-soft hover:text-red-700">Anular</summary>
+                                <form action={anularPagoPreventa} className="mt-1 flex flex-wrap gap-2">
+                                  <input type="hidden" name="pago" value={x.id} />
+                                  <input type="text" name="motivo" required placeholder="Motivo" className="rounded-lg border border-line px-2 py-1 text-sm" />
+                                  <SubmitButton className="rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">Anular pago</SubmitButton>
+                                </form>
+                              </details>
+                            )
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {p.status !== "CANCELADA" && (
+                    <div className="mt-3 space-y-2">
+                      <a
+                        href={`/api/preventa/${p.id}/comprobante`}
+                        className="inline-block rounded-lg border border-rose-deep px-3 py-1.5 text-sm font-semibold text-rose-deep hover:bg-blush-50"
+                      >
+                        📄 Descargar comprobante
+                      </a>
+                      <details className="rounded-lg open:bg-blush-50/50 open:p-2">
+                        <summary className="cursor-pointer text-sm font-medium text-rose-deep">+ Registrar pago</summary>
+                        <form action={registrarPagoPreventa} className="mt-2 grid gap-2 sm:grid-cols-4">
+                          <input type="hidden" name="preventa" value={p.id} />
+                          <input type="hidden" name="idem" value={randomUUID()} />
+                          <div>
+                            <label className={label}>Monto *</label>
+                            <input type="text" inputMode="decimal" name="monto" required placeholder="ej. 500.000" className={input} />
+                          </div>
+                          <div>
+                            <label className={label}>Medio *</label>
+                            <SelectMedio requerido />
+                          </div>
+                          <div>
+                            <label className={label}>Fecha *</label>
+                            <input type="date" name="fecha" required defaultValue={hoy} className={input} />
+                          </div>
+                          <div>
+                            <label className={label}>Nota</label>
+                            <input type="text" name="notas" placeholder="ej. seña, resto" className={input} />
+                          </div>
+                          <div className="sm:col-span-4">
+                            <SubmitButton className="rounded-lg bg-rose-deep px-4 py-2 text-sm font-semibold text-white hover:bg-rose-deeper">
+                              Guardar pago
+                            </SubmitButton>
+                          </div>
+                        </form>
+                      </details>
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-soft">
+                    Comprobante N° {numeroComprobante(p.receipt_no)}: PDF para mandarle al cliente con los productos, las cantidades y lo abonado (sin precios).
+                  </p>
+                </div>
 
                 {abierta && conStock.length > 0 && (
                   <form action={entregarPreventas} className="mt-3 rounded-lg bg-emerald-50/60 p-3">
@@ -285,6 +408,17 @@ export default async function PreventaPage({ searchParams }: { searchParams: Pro
                       <div className="sm:col-span-3">
                         <label className={label}>Notas / comentarios</label>
                         <input type="text" name="notas" defaultValue={p.notes ?? ""} placeholder="ej. pidió agregar 10 monodosis más" className={input} />
+                      </div>
+                      <div>
+                        <label className={label}>Total de la preventa</label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          name="total"
+                          defaultValue={p.total_amount === null ? "" : String(Number(p.total_amount)).replace(".", ",")}
+                          placeholder="opcional"
+                          className={input}
+                        />
                       </div>
                       <div className="sm:col-span-4">
                         <label className={label}>Cantidades</label>

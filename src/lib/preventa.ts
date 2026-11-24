@@ -1,5 +1,8 @@
 import "server-only";
 import { db } from "./db";
+import type { PagoPreventa } from "./preventa-pagos";
+
+export { MEDIOS_PAGO, numeroComprobante, resumenPago, type PagoPreventa } from "./preventa-pagos";
 
 export const ESTADOS_PREVENTA: Record<string, string> = {
   PENDIENTE: "Pendiente",
@@ -32,16 +35,30 @@ export type Preventa = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  total_amount: number | null;
+  receipt_no: number;
   lines: LineaPreventa[];
+  payments: PagoPreventa[];
 };
 
 const SELECT =
-  "id, customer, order_ref, channel, order_date, status, notes, created_by, created_at, lines:preorder_lines(id, quantity, delivered, product:products(id, sku, name, unit))";
+  "id, customer, order_ref, channel, order_date, status, notes, created_by, created_at, total_amount, receipt_no, lines:preorder_lines(id, quantity, delivered, product:products(id, sku, name, unit)), payments:preorder_payments(id, paid_on, amount, method, notes, created_by, created_at, voided_at, voided_by, void_reason)";
 
 export async function getPreventas(): Promise<Preventa[]> {
   const { data, error } = await db().from("preorders").select(SELECT).order("order_date", { ascending: false }).order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Preventa[];
+  return ((data ?? []) as unknown as Preventa[]).map(ordenarPagos);
+}
+
+export async function getPreventa(id: string): Promise<Preventa | null> {
+  const { data, error } = await db().from("preorders").select(SELECT).eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? ordenarPagos(data as unknown as Preventa) : null;
+}
+
+function ordenarPagos(p: Preventa): Preventa {
+  p.payments = [...(p.payments ?? [])].sort((a, b) => (a.paid_on === b.paid_on ? a.created_at.localeCompare(b.created_at) : a.paid_on.localeCompare(b.paid_on)));
+  return p;
 }
 
 export const pendiente = (l: { quantity: number; delivered: number }) => Number(l.quantity) - Number(l.delivered);
