@@ -350,6 +350,16 @@ export const MANUAL: Capitulo[] = [
         "**Trazabilidad del Store:** lo transferido al Store, menos lo vendido (Store + Todas las personas), menos las Otras salidas (uso interno, regalo, muestra), tiene que dar lo que hay físico.",
         "**Descargar Excel** con lo filtrado. Las ventas revertidas no se cuentan.",
       ]),
+      S("Campañas de descuentos (Black Friday)", [
+        P("Mientras dura una campaña (y 3 días después) aparece una tarjeta en el **Dashboard**, y el resumen completo queda en **Ventas → Black Friday**. Se actualiza sola con los pedidos pagados de Wix: no hay que cargar nada."),
+        L([
+          "Arriba, lo **minorista (web + Store)**, que es a lo que apunta la promo. Los mayoristas figuran aparte porque son pocos pedidos y muy grandes.",
+          "Cada número se compara contra **un finde normal**: el promedio de los mismos días de las 4 semanas anteriores. Mientras la campaña está en curso, se compara hasta el mismo día y hora (ej. el viernes a las 13 contra los viernes anteriores hasta las 13).",
+          "**Productos en promo:** los detecta solo, son los que se cobraron por debajo del precio de lista de Wix. Muestra unidades, el % de descuento y cuántas veces más se vendió que lo normal (\"sin ventas antes\" si en esos días no se había vendido).",
+          "Los pedidos que todavía esperan el pago (transferencia) se suman cuando se pagan.",
+        ]),
+        P("La plata (facturado, descuento dado sobre el precio de lista, costo y **margen** de cada producto en promo) la ven solo Joel y Mel. El margen usa el último costo cargado en **Costos**; si a un producto le falta el costo, se avisa y no entra en el margen.", { s: ["costos"], r: ["ADMIN"] }),
+      ]),
     ],
   },
   {

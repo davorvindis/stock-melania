@@ -19,6 +19,8 @@ import { MOVEMENT_LABELS, fmtQty, fmtDateTime } from "@/lib/types";
 import { Card, PageTitle, Stat, th, td } from "@/components/ui";
 import { MovementCard, OrigenDestino } from "@/components/movement-card";
 import { HBarChart, DailyFlowChart } from "@/components/charts";
+import { campaniaEnDashboard, getResumenCampania, veMontosCampania } from "@/lib/black-friday";
+import { TarjetaCampania } from "@/components/campania";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +53,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const vePedidos = can(user, "pedidos");
   // salud de la conexión con Wix: Joel, Mel y Yura (admin / encargada)
   const veSaludWix = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "VIEWER";
-  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen, enEspera, conMinimo] = await Promise.all([
+  // campaña de descuentos en curso (Black Friday): la ve quien tiene Ventas
+  const campania = verTodas ? campaniaEnDashboard() : null;
+  const [balances, movements, counts, ventas, vacPendientes, preventaPend, cierresNuevos, cfPendientes, wix, separables, listos, feriados, saludWix, resumen, enEspera, conMinimo, resumenCampania] = await Promise.all([
     getBalances(),
     getMovements(8),
     getCounts(),
@@ -69,6 +73,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     vePedidos ? getPedidosEnEspera() : Promise.resolve([]),
     // productos con stock mínimo: los que no tienen nada no aparecen en los saldos
     db().from("products").select("id, sku, name, type, min_stock").eq("active", true).gt("min_stock", 0).then((r) => r.data ?? []),
+    campania ? getResumenCampania(campania).catch(() => null) : Promise.resolve(null),
   ]);
   // pagados hace más de 3 días hábiles sin procesar (la consulta trae los de más de 3 días corridos)
   const demorados = wix ? wix.demorados.filter((p) => demorado(p, feriados)) : [];
@@ -194,6 +199,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <Stat label="En cuarentena / bloqueado" value={fmtQty(enCuarentena)} alert={enCuarentena > 0} />
         <Stat label="Productos bajo mínimo" value={bajoMinimo.length} alert={bajoMinimo.length > 0} />
       </div>
+
+      {resumenCampania && <TarjetaCampania r={resumenCampania} montos={veMontosCampania(user)} />}
 
       {(() => {
         // preventas pendientes de productos que ya tienen stock disponible
